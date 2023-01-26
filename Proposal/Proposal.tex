@@ -1,0 +1,43 @@
+\documentclass[12pt]{article}
+\usepackage[paper=letterpaper,margin=2cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{newtxtext, newtxmath}
+\usepackage{enumitem}
+\usepackage{titling}
+\usepackage[colorlinks=true]{hyperref}
+
+\setlength{\droptitle}{-6em}
+
+\title{Imputation of Foreign ETF Price Dynamics During Off Synchronous Market Hours}
+\author{Mohammad Rafay Kalim }
+\date{\vspace{-5ex}}
+
+\begin{document}
+\maketitle
+
+\section{Project Description}
+Exchange Traded Funds (ETFs) provide investors with an exposure to a group of holdings or economies in one easily-tradable asset. Foreign ETFs provide exposure to markets and assets that are traded in markets other than their own. For example, CJP gives exposure to the top 1000 Japanese companies, but trades on the Toronto Stock Exchange \cite{blackrock}. However, the Tokyo Stock Exchange is open from 9pm EST to 3am EST while the Toronto Stock Exchange is open from 930am EST to 4pm EST, and thus have no synchronized trading sessions. This prompts the question: In the case of \textbf{no} mutually (between market participants) agreed upon fair asset value for the constituents of an ETF, what is the most accurate way of determining the Net Asset Value (NAV) of the ETF? This thesis will explore various statistical imputation techniques for determining a fair NAV, and explore potential arbitrage strategies when this fair value is violated. Additionally, tracking error using existing pricing mechanisms and a new proposed methodology will be compared.
+
+\section{Existing Literature}
+There is ample existing literature which explores foreign ETFs.  Most work tries to measure and explain tracking error in foreign ETFs. Johnson (2009) studies tracking error of foreign ETFs and finds that tracking error is highest in markets with off-synchronous trading hours and those with excess foreign index returns relative to US index returns. \cite{johnson2009}  Jares and Lavin (2004) propose a trading strategy for Japanese and Hong Kong ETFs, using a simple discount/premium based buy/sell rule \cite{jares2004japan}. Similar research on tracking efficiency and simple arbitrage is done on various markets such as Turkey and European markets, as summarized by Kumar and Gaba (2021) \cite{gaba2021tracking}.
+
+\section{Objectives, Methods and Significance}
+In this paper, I would like to utilize various data sources and statistical imputation techniques to calculate the fair price of foreign ETFs and propose tracking error minimization strategies. These include:
+\begin{enumerate}
+	\item Utilizing autoregressive techniques to take advantage of correlations between foreign futures data and other local market data to create a predictive model
+	\item Leveraging various machine learning techniques to create non-linear models of fair value prediction
+	\item Using error-minimization and portfolio optimization techniques to create portfolios to take advantage of price discrepancies and suggest a minimum tracking error model
+\end{enumerate}
+
+To the best of my knowledge, these ideas would be novel contributions to the field of ETF pricing. They have grown in significance rapidly in recent years due to many retail investors looking for exposure to various markets and asset classes. Tracking error is the primary way that ETF issuers differentiate themselves from other issuers, and so a method to minimize this error would be very useful.
+
+\newpage
+
+\bibliographystyle{ieeetr}  
+
+\bibliography{citations}
+
+
+\end{document}

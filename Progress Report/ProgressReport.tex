@@ -1,0 +1,61 @@
+\documentclass[12pt]{article}
+\usepackage[paper=letterpaper,margin=2cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{newtxtext, newtxmath}
+\usepackage{enumitem}
+\usepackage{titling}
+\usepackage[colorlinks=true]{hyperref}
+\usepackage{optidef}
+
+\setlength{\droptitle}{-6em}
+
+\title{Distributionally Robust Risk Parity Portfolios with Wasserstein Distances}
+\author{Mohammad Rafay Kalim }
+\date{\vspace{-5ex}}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+The only certainty in world of investments is the lack of certainty. There is a large body of research in the field of portfolio optimization whose goal is to ingest uncertain, estimated data to make optimal investment decisions. 
+
+
+Mean Variance Optimization (MVO), pioneeered by Markowitz in 1952, was the first such attempt to create mathematically optimal investment decisions \cite{markowitz1952}. This techniques aims to balance the tradeoff between risk and reward, subject to the investor's needs. Contrary to MVO, Risk Parity (RP) portfolios have the objective of ensuring an equal risk contribution from each asset, with no explicit reward goal \cite{qian2011risk}.  The uncertainty of the risk and reward measures introduce significant errors making the output of RP sensitive to input data. Recent advances in Distributionally Robust Optimization have led to Distributionally Robust Risk Parity (DRRP), which introduces an uncertainty set around the probability distribution of historical observations used as inputs to RP \cite{costa2020robust}. This allows the RP model to be less sensitive to errors in the input estimates. This thesis will introduce a new version of DRRP, called DRRP-W (for Wasserstein) which assumes a uniform probability distribution for our observed historical returns, but introduces an uncertainty set around the return observations themselves using the Wasserstein Distance.  Computational experiments will be run to compare this new model against DRRP, Robust MVO and Robust Risk Parity. Further, this thesis will propose an end-to-end optimization approach following \cite{butler2023integrating} to optimize the choice of $\delta$, the size of the uncertainty set.
+
+This report is structured as follows: Section 2 contains an overview of existing literature and preliminaries to begin exploring the DRRP-W problem. Section 3 provides an update on progress made so far, and Section 4 outlines next steps and concludes.
+
+\section{Background}
+
+Blanchet, Chen and Zhou (2018) explore distributionally robust mean-variance portfolios using the Wasserstein distance \cite{blanchet2022distributionally}. They are able to find a convex problem which protects portfolios against varations in $\mu$.  Their paper provides a good structure that I can follow to extend the idea to Risk Parity portfolios.  They also provide an exposition on the critical choice of $\delta$, which is based in 3 assumptions on the distribution of the underlying data.  Butler and Kwon (2023) propose a novel end-to-end optimization technique for various popular portfolio optimization strategies \cite{butler2023integrating}. The goal of this paper is to find an alternative to the common `Predict, then optimize' workflow followed in this field, where the `Predict' component is studied through factor models, and the `optimize' component is studied through MVO, RP, etc. They integrate linear regression OLS optimization into MVO, to get the best regression model that maximizes the out of sample sharpe ratio.  I would like to follow the steps outlined in this paper to guide the choice of $\delta$.
+
+\subsection{Modern Portfolio Theory and Risk Parity}
+
+Many portfolio optimization techniques, such as Mean Variance Optimization (MVO) introduced by Markowitz in Modern Portfolio Theory, focus on the tradeoff between risk and reward \cite{markowitz1952}. This requires the estimation of $\mu$, the reward measure, and $\Sigma$, the risk measure. The risk-return tradeoff variation of MVO can be formulated as
+
+\begin{mini}|s|
+{\boldsymbol{x}}{\boldsymbol{x}^T \boldsymbol{\Sigma} \boldsymbol{x} - \lambda \boldsymbol{\mu}^T \boldsymbol{x}}
+{}{}
+\addConstraint{\boldsymbol{1}^T \boldsymbol{x} = 1}
+\addConstraint{x\geq0, \forall x \in \boldsymbol{x}}{}
+\end{mini}
+
+Here, $\boldsymbol{\mu}$ and $\boldsymbol{\Sigma}$ are estimated through observed historical data. Many estimates of $\mu$ utilize prediction techniques like linear regression through factor models. Thus, as with any prediction methodology, they are subject to a potentially large amount of estimation error.
+
+\subsection{Distributionally Robust Risk Parity}
+\subsection{Integrating Prediction and Optimization}
+\subsection{Contribution}
+
+\section{Progresss}
+
+\section{Next Steps}
+
+\newpage
+
+\bibliographystyle{ieeetr}  
+
+\bibliography{citations}
+
+
+\end{document}

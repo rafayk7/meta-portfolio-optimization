@@ -1,0 +1,24 @@
+\begin{thebibliography}{1}
+
+\bibitem{markowitz1952}
+H.~Markowitz, ``Portfolio selection,'' {\em The Journal of Finance}, vol.~7,
+  no.~1, pp.~77--91, 1952.
+
+\bibitem{qian2011risk}
+E.~Qian, ``Risk parity and diversification,'' {\em The Journal of Investing},
+  vol.~20, no.~1, pp.~119--127, 2011.
+
+\bibitem{costa2020robust}
+G.~Costa and R.~Kwon, ``A robust framework for risk parity portfolios,'' {\em
+  Journal of Asset Management}, vol.~21, no.~5, pp.~447--466, 2020.
+
+\bibitem{butler2023integrating}
+A.~Butler and R.~H. Kwon, ``Integrating prediction in mean-variance portfolio
+  optimization,'' {\em Quantitative Finance}, pp.~1--24, 2023.
+
+\bibitem{blanchet2022distributionally}
+J.~Blanchet, L.~Chen, and X.~Y. Zhou, ``Distributionally robust mean-variance
+  portfolio selection with wasserstein distances,'' {\em Management Science},
+  vol.~68, no.~9, pp.~6382--6410, 2022.
+
+\end{thebibliography}
