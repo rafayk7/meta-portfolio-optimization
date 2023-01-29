@@ -1,3 +1,12 @@
-\begin{thebibliography}{}
+\begin{thebibliography}{1}
+
+\bibitem{costa2020robust}
+G.~Costa and R.~Kwon, ``A robust framework for risk parity portfolios,'' {\em
+  Journal of Asset Management}, vol.~21, no.~5, pp.~447--466, 2020.
+
+\bibitem{costa2022data}
+G.~Costa and R.~H. Kwon, ``Data-driven distributionally robust risk parity
+  portfolio optimization,'' {\em Optimization Methods and Software}, vol.~37,
+  no.~5, pp.~1876--1911, 2022.
 
 \end{thebibliography}

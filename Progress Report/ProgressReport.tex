@@ -9,53 +9,306 @@
 \usepackage[colorlinks=true]{hyperref}
 \usepackage{optidef}
 
+\newcommand{\irow}[1]{% inline row vector
+  \begin{smallmatrix}(#1)\end{smallmatrix}%
+}
+
 \setlength{\droptitle}{-6em}
+\bibliographystyle{ieeetr}  
 
 \title{Distributionally Robust Risk Parity Portfolios with Wasserstein Distances}
 \author{Mohammad Rafay Kalim }
 \date{\vspace{-5ex}}
+\newtheorem{theorem}{Theorem}
 
 \begin{document}
 \maketitle
-
+\tableofcontents
+\newpage
 \section{Introduction}
-The only certainty in world of investments is the lack of certainty. There is a large body of research in the field of portfolio optimization whose goal is to ingest uncertain, estimated data to make optimal investment decisions. 
+The only certainty in world of investments is the lack of certainty in information. There is a large body of research in the field of portfolio optimization with goal of ingesting uncertain, estimated data to make optimal investment decisions. 
 
 
 Mean Variance Optimization (MVO), pioneeered by Markowitz in 1952, was the first such attempt to create mathematically optimal investment decisions \cite{markowitz1952}. This techniques aims to balance the tradeoff between risk and reward, subject to the investor's needs. Contrary to MVO, Risk Parity (RP) portfolios have the objective of ensuring an equal risk contribution from each asset, with no explicit reward goal \cite{qian2011risk}.  The uncertainty of the risk and reward measures introduce significant errors making the output of RP sensitive to input data. Recent advances in Distributionally Robust Optimization have led to Distributionally Robust Risk Parity (DRRP), which introduces an uncertainty set around the probability distribution of historical observations used as inputs to RP \cite{costa2020robust}. This allows the RP model to be less sensitive to errors in the input estimates. This thesis will introduce a new version of DRRP, called DRRP-W (for Wasserstein) which assumes a uniform probability distribution for our observed historical returns, but introduces an uncertainty set around the return observations themselves using the Wasserstein Distance.  Computational experiments will be run to compare this new model against DRRP, Robust MVO and Robust Risk Parity. Further, this thesis will propose an end-to-end optimization approach following \cite{butler2023integrating} to optimize the choice of $\delta$, the size of the uncertainty set.
 
 This report is structured as follows: Section 2 contains an overview of existing literature and preliminaries to begin exploring the DRRP-W problem. Section 3 provides an update on progress made so far, and Section 4 outlines next steps and concludes.
-
+\newpage
 \section{Background}
+
+\subsection{Modern Portfolio Theory}
+\label{mpt}
+
+Many portfolio optimization techniques, such as Mean Variance Optimization (MVO) introduced by Markowitz in Modern Portfolio Theory, focus on the tradeoff between risk and reward \cite{markowitz1952}.  The goal of MVO and all other portfolio optimization techniques is to obtain $\boldsymbol{\phi} \in \mathbb{R}^n$, a vector which contains the optimal portfolio allocations for each of the n assets where `optimal` is defined by the user's objective. Further, this also requires the estimation of $\boldsymbol{\mu}$, the reward measure, and $\boldsymbol{\Sigma}$, the risk measure.  Once we have a risk and reward measure, we can formulate an optimization problem to obtain $\boldsymbol{\phi}$.  For example, the risk-return tradeoff (the objective) variation of MVO can be formulated as
+
+\begin{mini}|s|
+{\boldsymbol{\phi}}{\boldsymbol{\phi}^T \boldsymbol{\Sigma} \boldsymbol{\phi} - \lambda \boldsymbol{\mu}^T \boldsymbol{\phi}}
+{}{}
+\addConstraint{\boldsymbol{1}^T \boldsymbol{\phi} = 1}
+\addConstraint{(\boldsymbol{\phi}\geq0)}{}
+\end{mini}
+
+This can be thought of as minimizing our portfolio risk, as measured by the variance of the portfolio returns ($\boldsymbol{\phi}^T \boldsymbol{\Sigma} \boldsymbol{\phi}$) while maximizing our portfolio reward ($\lambda \boldsymbol{\mu}^T \boldsymbol{\phi}$). $\lambda$ here is a user-defined hyperparameter which quantifies the risk-aversion of the user by amplifying the reward measure. A high value for $\lambda$ means that the user places a heavy (negative) weight on a high return, and thus have a high risk tolerance due to the fact that this is a minimization problem.
+
+A natural question to ask is how  $\boldsymbol{\mu}$ and $\boldsymbol{\Sigma}$ are estimated. A naive method is by taking the average of observed historical data. Let $ \boldsymbol{\hat{\xi}} \in \mathbb{R}^{nxT} $ be the matrix of observed historical returns, with $T$ historical occurences and $n$ assets. Then, the estimate of the expected asset return for asset $i$ is
+
+\begin{equation}
+\label{mu-naive}
+\hat{\mu_i} = \boldsymbol{\mathbb{E}}[\boldsymbol{\xi}] = \frac{1}{T}  \sum_{k=1}^T \hat{\xi}_k
+\end{equation}
+
+Similarly, our risk measure $\boldsymbol{\Sigma} \in \mathbb{R}^{nxn}$ is known as the asset covariance matrix, where $\sigma_{i,j}$ can be computed as:
+
+\begin{equation}
+\sigma_{ij} = \frac{1}{T-1} \sum_{t=1}^T (\hat{\xi}_{it} - \hat{\mu}_i)(\hat{\xi}_{jt} - \hat{\mu}_j)
+\end{equation}
+
+However, as the number of assets $n$ increases, we can see that the number of parameters to be estimated increases by $O(n^2)$. To see this, first note that $\Sigma$ has $n^2$ entries. Since $\Sigma$ is a covariance matrix, it must be symmetric. Thus, the number of unique elements is $\frac{n(n-1)}{2}$ (from the upper right section of the matrix) and $n$ (from the leading diagonal).  Finally, $O(n + \frac{n(n-1)}{2}) = O(n^2)$. In real world asset allocation problems, portfolio managers may have to choose optimal allocations amongst thousands of stocks,  which can lead to a matrix with over 1,000,000 elements to be estimated. This can be very computationally expensive.
+
+% Factor Models
+% TO DO cite fama french
+To overcome these computational challenges, many practioners use factor models, first introduced by Fama and French \cite{famafrench1993}.  Factor models are usually linear models created through linear regression with the goal of explaining the return of an asset through a set of factors. These factors are nothing but the explanatory variables (or features) in a linear regression model. Now, we can introduce some notation around factor models.  Ordinary Least Squares (OLS) theory provides us a closed form solution to the regression problem. Assuming $p$ factors,  let
+\begin{enumerate}
+\item $\boldsymbol{X} = \irow{\boldsymbol{1} & \boldsymbol{f}}$ be the data matrix, where $\boldsymbol{f} \in \mathbb{R}^{Txp}$ is the matrix of observed factor returns
+\item $\boldsymbol{R} \in \mathbb{R}^{Txn}$ be a matrix of observed historical returns for all assets
+\item $\boldsymbol{\alpha} \in \mathbb{R}^n$ be the vector of intercept terms for each asset
+\item $\boldsymbol{V} \in \mathbb{R}^{pxn}$ be the matrix of coefficients to each factor for each asset
+\end{enumerate}
+
+Then, the closed form solution to find $\boldsymbol{B}$, the factor coefficients, is
+
+\begin{equation}
+\boldsymbol{B} = \begin{pmatrix} \boldsymbol{\alpha}^T \\\boldsymbol{V} \end{pmatrix} = (\boldsymbol{X}^T\boldsymbol{X})^{-1} \boldsymbol{X}^T\boldsymbol{R}
+\end{equation}
+
+However, our original problem is to get an estimate of $\boldsymbol{\mu}$ and $\boldsymbol{\Sigma}$. To that end, we can easily see that by the definition of linear regression these can be reprsented as
+
+\begin{equation}
+\boldsymbol{\mu} = \boldsymbol{\alpha} + \boldsymbol{V}^T\boldsymbol{\hat{f}}
+\end{equation}
+
+and
+
+\begin{equation}
+\boldsymbol{\Sigma} = \boldsymbol{V}^T \boldsymbol{F} \boldsymbol{V} + \boldsymbol{D}
+\end{equation}
+
+Here,  $\boldsymbol{\hat{f}} \in \mathbb{R}^p$ is a vector of expected factor returns, $\boldsymbol{F} \in \mathbb{R}^{pxp}$ is the factor covariance matrix and $\boldsymbol{D} \in \mathbb{R}^{nxn}$ is a diagonal matrix of residual variances, obtained through regression.
+
+These estimates of $\boldsymbol{\mu}$ and $\boldsymbol{\Sigma}$ can now be used more efficiently with MVO to get portfolios faster, and with a smaller potential for computational errors.
+
+It is important to note that while factor models allow optimization over a larger universe of assets and improve computational efficiency,there are several drawbacks. The most important drawback is that of estimation error, which is main the topic of research amongst the world's largest asset managers.  The handling of estimation errors in the inputs to our optimization problems is the focus of this thesis.
+
+\subsection{Risk Parity}
+Our MVO problem, with the minimization objective function of $\boldsymbol{\phi}^T \boldsymbol{\Sigma} \boldsymbol{\phi} - \lambda \boldsymbol{\mu}^T \boldsymbol{\phi}$ was just one example of a portfolio optimization problem. The MVO formulation is ideal for most use cases where users want to balance risk and reward. However,  different investors can have different objectives.  One possible goal of an investor is that of risk parity. Risk parity portfolios can be thought of as equal risk contribution portfolios, wherein each asset contributes the same amount of risk towards the overall portfolio risk. A simple analogy to risk parity is the equally weighted portfolio. Here, for $n$ assets, each asset has a weight of $\frac{1}{n}$. In this simple portfolio, we are imposing wealth parity, as opposed to risk parity.
+
+To formulate risk parity as an optimization problem, we first need to decompose the portfolio risk. Here, we are once again using portfolio variance as a measure of risk. 
+
+We first introduce Euler's Theorem for positive homogenous functions. A function $f: \mathbb{R}^n \rightarrow \mathbb{R}$ is called a positive homogenous function of degree $k$ if, $\forall c \geq 0$ and $\boldsymbol{x} \in \mathbb{R}^n$,
+\begin{equation}
+f(c \cdot \boldsymbol{x}) = c^k f(\boldsymbol{x})
+\end{equation}
+
+\begin{theorem}[Euler's Homogenous Function Theorem]
+\label{euler-homogenous-function}
+A function $f$ is continuously differentiable positively homogenous function of degree k if and only if
+\[k \cdot f(\boldsymbol{x}) = \boldsymbol{x}^T \nabla f(\boldsymbol{x})\]
+\end{theorem}
+
+\begin{theorem}
+\label{var-degree-2}
+The portfolio variance, $\sigma_p^2 = {\phi^T \Sigma \phi}$, is a positive homogenous function of degree 2.
+\end{theorem}
+
+Our risk measure is the portfolio variance.  The marginal variance contribution of an asset i is 
+
+\[
+	\frac{\partial \sigma_p^2}{\partial \phi_i} = 2(\boldsymbol{\Sigma} \boldsymbol{\boldsymbol{\phi}})_i
+\]
+
+Where $(\boldsymbol{\Sigma} \boldsymbol{\boldsymbol{\phi}})_i$ is the $i^{th}$ element of the vector $\boldsymbol{\Sigma} \boldsymbol{\phi}$. By using \ref{euler-homogenous-function} and \ref{var-degree-2}, we can represent $\sigma_p^2$ as
+
+\[
+\sigma_p^2 = \boldsymbol{\phi}^T \boldsymbol{\Sigma} \boldsymbol{\phi} = \frac{1}{2}\sum_{i=1}^n 2\boldsymbol{\phi}(\boldsymbol{\Sigma} \boldsymbol{\boldsymbol{\phi}})_i = \sum_{i=1}^n \boldsymbol{\phi}(\boldsymbol{\Sigma} \boldsymbol{\boldsymbol{\phi}})_i 
+\]
+
+For ease of notation, we can let $R_i =  \boldsymbol{\phi}(\boldsymbol{\Sigma} \boldsymbol{\boldsymbol{\phi}})_i $, which represents the risk contribution of an asset to the total portfolio risk. Thus, the problem of risk parity becomes finding a portfolio where $R_i = R_j \forall i, j$.
+
+To formulate risk parity, consider the function
+
+\[
+f(\boldsymbol{y}) = \frac{1}{2} \boldsymbol{y}^T \boldsymbol{\Sigma} \boldsymbol{y} - c\sum_{i=1}^n ln(y_i)
+\]
+
+for some decision variable $\boldsymbol{y}$. Note that $\boldsymbol{\Sigma}$ is a PSD matrix (as it is a covariance matrix) and $ln(\cdot)$ is strictly concave. Thus, $f(\boldsymbol{y})$ is a strictly convex function.  So, we can try to find the value that minimizes $f$ by taking the gradient and setting it to 0. To that end, we find
+\[
+\nabla f(\boldsymbol{y}) = \boldsymbol{\Sigma}\boldsymbol{y} - c\frac{1}{\boldsymbol{y}} = 0.
+\]
+
+Which further implies
+
+\[
+	y_i(\boldsymbol{\Sigma}\boldsymbol{y})_i = R_i = c, \forall i
+\]
+
+Note that since $R_i = c$ for all assets, the decision variable $\boldsymbol{y}$ holds the weights of a risk parity optimal portfolio. Note that we require that $\boldsymbol{y} > 0$ due to the logarithm. Hence, the risk parity optimization problem is formulated as
+
+\begin{mini}|s|
+{\boldsymbol{y}}{\frac{1}{2} \boldsymbol{y}^T \boldsymbol{\Sigma} \boldsymbol{y} - c\sum_{i=1}^n ln(y_i)}
+{}{}
+\addConstraint{\boldsymbol{y} > 0}{}
+\end{mini}
+
+And we can find our optimal asset weights by
+
+\[
+\phi_i^* = \frac{y_i^*}{\sum_{i=1}^n y_i^*}
+\]
+
+\subsection{Robust Optimization}
+In our section on \nameref{mpt} we noted that our estimates of $\boldsymbol{\mu}$ and $\boldsymbol{\Sigma}$ are prone to large estimation errors. This is natural and to be expected, as parameters estimated from historical data will always have some degree of uncertainty.  To handle this inevitable uncertainty in our estimates, we can try to make our optimization problems robust to small perturbations to the input data.  This is the main idea behind the concept of robust optimization. More concretely, given a canonical linear program with $m$ constraints and $n$ decision variables
+
+\begin{mini}|s|
+{\boldsymbol{x}}{\boldsymbol{c}^T \boldsymbol{x}}
+{}{}
+\addConstraint{\boldsymbol{Ax} > \boldsymbol{b}}{}
+\end{mini}
+Robust optimization, with uncertainty on each of $\boldsymbol{c}$, $\boldsymbol{A}$ and $\boldsymbol{b}$, instead solves
+\begin{mini}|s|
+{\boldsymbol{x}}{\boldsymbol{c}^T \boldsymbol{x}}
+{}{}
+\addConstraint{\boldsymbol{Ax} > \boldsymbol{b} \forall (\boldsymbol{c, A, b}) \in \mathcal{U}}{}
+\end{mini}
+
+Where $\mathcal{U} \in \mathbb{R}^n \times \mathbb{R}^{mxn} \times \mathbb{R}^m$ defines the uncertainty set around each nominal estimate of $(\boldsymbol{c, A, b})$.
+
+\subsubsection{Robust MVO and Risk Parity}
+Let us now look at the robust counterparts of MVO and risk parity. For MVO, we consider the target return variation.  The nominal MVO is
+
+\begin{mini}|s|
+{\boldsymbol{\phi}}{\boldsymbol{\phi}^T \boldsymbol{\Sigma} \boldsymbol{\phi}}
+{}{}
+\addConstraint{\boldsymbol{\mu}^T \boldsymbol{\phi} \geq R}
+\addConstraint{\boldsymbol{1}^T \boldsymbol{\phi} = 1}
+\addConstraint{(\boldsymbol{\phi}\geq0)}{}
+\end{mini}
+
+Here we will focus on an uncertainty set around the expected return estimate $\boldsymbol{\mu}$. The general form of $\mathcal{U}$ is given by
+
+\begin{equation}
+\mathcal{U}_{\mu} = \{ x : D({\mu_i}, x) \leq \delta_i, i = 1..n \}
+\end{equation}
+
+Where $D(a,b)$ is some distance measure and $\delta_i$ is the size of our uncertainty set centered at our estimate $\mu_i$. This now gives us two hyperparameters that we can select. First, the distance measure.  For example, we can use an L1 norm to get the following uncertainty set
+
+\begin{equation}
+\mathcal{U}_{\mu} = \{ x : |{\mu_i}-x| \leq \delta_i, i = 1..n \}
+\end{equation}
+
+Incorporating this into our nominal MVO, we get the following robust MVO formulation
+
+\begin{mini}|s|
+{\boldsymbol{\phi}}{\boldsymbol{\phi}^T \boldsymbol{\Sigma} \boldsymbol{\phi}}
+{}{}
+\addConstraint{\boldsymbol{\mu}^T \boldsymbol{\phi}  - \boldsymbol{\delta}^T|\boldsymbol{\phi}| \geq R}
+\addConstraint{\boldsymbol{1}^T \boldsymbol{\phi} = 1}
+\addConstraint{(\boldsymbol{\phi}\geq0)}{}
+\end{mini}
+
+where $\delta_i = \frac{\epsilon_1\sigma_i}{\sqrt{T}}$.
+
+This problem is more difficult for risk parity. Note that in the risk parity formulation, we did not have a expected return vector $\boldsymbol{\mu}$.  Costa (2020) proposes a formulation for robust risk parity \cite{costa2020robust}. This robust formulation introduces an uncertainty set around the covariance matrix $\boldsymbol{\Sigma}$. The optimization problem becomes a second order cone program (SOCP) and can be written as 
+
+\begin{mini}|s|
+{\boldsymbol{\phi},  \boldsymbol{z}, u, v, \zeta}{u-v}
+{}{}
+\addConstraint{\boldsymbol{1}^T\boldsymbol{\phi} = 1}
+\addConstraint{||\Sigma^{\Delta}\boldsymbol{\phi}||_2 \leq \sqrt{n}\zeta}
+\addConstraint{\Omega\zeta \leq [\hat{\Sigma}\boldsymbol{\phi}]_i - z_i, i=1..n}
+\addConstraint{||\begin{bmatrix}
+           2v \\
+           x_i - z_i
+         \end{bmatrix}||_2 \leq x_i + z_i, i=1..n}
+\addConstraint{|| (\boldsymbol{\hat{\Sigma}} + \boldsymbol{\Sigma}^{\Delta})^{1/2}\boldsymbol{\phi}||2 \leq \sqrt{n}u}
+\addConstraint{\boldsymbol{\phi}, \boldsymbol{z}\geq0}
+\addConstraint{u,v,\zeta \geq 0}
+{}
+\end{mini}
+
+The interesting constraint here is that of $\Omega\zeta \leq [\hat{\Sigma}\boldsymbol{\phi}]_i - z_i, i=1..n$.  As this constraint tightens, it reduces the size of the error term which diminishes the portfolio's exposure to assets with larger estimation error in their marginal risk contributions. Computational experiments show that this robust formulation can achieve around 6\% better returns as compared to  nominal risk parity portfolios.
+
+
+\subsubsection{Distributionally Robust Risk Parity}
+
+
+
+\subsubsection{The Wasserstein Distance}
+
+
+
+\subsection{Differentiable Optimization Layers}
+
+
+\newpage
+\section{My Contribution}
+
+\subsection{Wasserstein Distance Dynamically Robust RP}
+
+We defined a naive estimate for $\boldsymbol{\hat{\mu}}$ in equation \ref{mu-naive}. It is interesting to note that this implicitly assumes that our historical observations of returns follow a uniform distribution, as the expected value is simply the average.  Costa (2022) challenges this assumption to introduce an uncertainty set around $\mathbb{P}$, the probability distribution of our historical observations\cite{costa2022data}.  Being a probability distribution, the general form for $\mathbb{P}$ is given by
+
+\[
+\mathbb{P}= \{p\in \mathbb{R}_+^T : \boldsymbol{1}^Tp = 1\}
+\]
+
+Costa assumes the nominal distribution is given by $p = 1/T$, and defines the ambiguity set around this nominal distribution using distance measures such as K-L divergence.  The resulting DRRP problem can be solved using an algorithm that they define. However, this algorithm is computationally expensive and requires domain-specific knowledge to solve. In our work, we will take a different approach. Instead of defining an ambiguity set around $\mathbb{P}$, we define an ambiguity set around each observation $\hat{\xi}$.
+
+Let us begin by defining the portfolio return and portfolio variance under an asset allocation decision $\phi$.  The portfolio return is given by
+
+\[
+	\boldsymbol{\mu_\phi} = \boldsymbol{\phi}^T\boldsymbol{\hat{\mu}} = \boldsymbol{\phi}^T \boldsymbol{\hat{\xi}}\boldsymbol{1}/T = \boldsymbol{1}^T/T \boldsymbol{\hat{\xi}}^T \boldsymbol{\phi}
+\]
+
+Where $\boldsymbol{1} \in \mathbb{R}^T$. Further, the portfolio variance can be written as
+\[
+	\boldsymbol{\Sigma_\phi} 
+	= \boldsymbol{\phi}^T \boldsymbol{\hat{\Sigma}} \boldsymbol{\phi}
+	= \mathbb{E}^{\mathbb{P}}[(\boldsymbol{\xi}^T\phi - \mathbb{E}[\boldsymbol{\xi}^T\boldsymbol{\phi}])^2]
+\]
+
+Using the formula for variance, this can be simplified as
+
+\[
+	\boldsymbol{\Sigma_\phi}
+	= \mathbb{E}^{\mathbb{P}}[(\boldsymbol{\xi}^T \boldsymbol{\phi})^2] - (\mathbb{E}^{\mathbb{P}}[\boldsymbol{\xi}^T \boldsymbol{\phi}])^2
+\]
+
+With noting that $(\boldsymbol{\xi}^T \boldsymbol{\phi})^2 = (\boldsymbol{\xi}^T \boldsymbol{\phi})^T(\boldsymbol{\xi}^T \boldsymbol{\phi}) =\boldsymbol{\phi}^T  \boldsymbol{\xi} \boldsymbol{\xi} ^T \boldsymbol{\phi}$ and that $\boldsymbol{\phi}^T  \boldsymbol{\xi} = \boldsymbol{\xi}^T \boldsymbol{\phi} $, we can re-write the above to get
+
+\[
+	\boldsymbol{\Sigma_\phi} = \boldsymbol{\phi}^T \mathbb{E}^{\mathbb{P}}[\boldsymbol{\xi} \boldsymbol{\xi} ^T] \boldsymbol{\phi} - \alpha^2
+\]
+
+Where $\alpha = \mathbb{E}^{\mathbb{P}}[\boldsymbol{\phi}^T \boldsymbol{\xi}]$.  Now, we can re-write our distributionally robust risk parity problem using these new terms to get
+
+
+
+
+\subsection{End-To-End $\delta$ Selection}
 
 Blanchet, Chen and Zhou (2018) explore distributionally robust mean-variance portfolios using the Wasserstein distance \cite{blanchet2022distributionally}. They are able to find a convex problem which protects portfolios against varations in $\mu$.  Their paper provides a good structure that I can follow to extend the idea to Risk Parity portfolios.  They also provide an exposition on the critical choice of $\delta$, which is based in 3 assumptions on the distribution of the underlying data.  Butler and Kwon (2023) propose a novel end-to-end optimization technique for various popular portfolio optimization strategies \cite{butler2023integrating}. The goal of this paper is to find an alternative to the common `Predict, then optimize' workflow followed in this field, where the `Predict' component is studied through factor models, and the `optimize' component is studied through MVO, RP, etc. They integrate linear regression OLS optimization into MVO, to get the best regression model that maximizes the out of sample sharpe ratio.  I would like to follow the steps outlined in this paper to guide the choice of $\delta$.
 
-\subsection{Modern Portfolio Theory and Risk Parity}
 
-Many portfolio optimization techniques, such as Mean Variance Optimization (MVO) introduced by Markowitz in Modern Portfolio Theory, focus on the tradeoff between risk and reward \cite{markowitz1952}. This requires the estimation of $\mu$, the reward measure, and $\Sigma$, the risk measure. The risk-return tradeoff variation of MVO can be formulated as
-
-\begin{mini}|s|
-{\boldsymbol{x}}{\boldsymbol{x}^T \boldsymbol{\Sigma} \boldsymbol{x} - \lambda \boldsymbol{\mu}^T \boldsymbol{x}}
-{}{}
-\addConstraint{\boldsymbol{1}^T \boldsymbol{x} = 1}
-\addConstraint{x\geq0, \forall x \in \boldsymbol{x}}{}
-\end{mini}
-
-Here, $\boldsymbol{\mu}$ and $\boldsymbol{\Sigma}$ are estimated through observed historical data. Many estimates of $\mu$ utilize prediction techniques like linear regression through factor models. Thus, as with any prediction methodology, they are subject to a potentially large amount of estimation error.
-
-\subsection{Distributionally Robust Risk Parity}
-\subsection{Integrating Prediction and Optimization}
-\subsection{Contribution}
-
-\section{Progresss}
-
+\newpage
 \section{Next Steps}
+
+It is indeed true that this work is far from over.
 
 \newpage
 
-\bibliographystyle{ieeetr}  
+
 
 \bibliography{citations}
+
+
 
 
 \end{document}

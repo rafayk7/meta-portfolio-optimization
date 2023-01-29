@@ -1,0 +1,13 @@
+\contentsline {section}{\numberline {1}Introduction}{2}{section.1}%
+\contentsline {section}{\numberline {2}Background}{3}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Modern Portfolio Theory}{3}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Risk Parity}{4}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Robust Optimization}{5}{subsection.2.3}%
+\contentsline {subsubsection}{\numberline {2.3.1}Robust MVO and Risk Parity}{6}{subsubsection.2.3.1}%
+\contentsline {subsubsection}{\numberline {2.3.2}Distributionally Robust Risk Parity}{7}{subsubsection.2.3.2}%
+\contentsline {subsubsection}{\numberline {2.3.3}The Wasserstein Distance}{7}{subsubsection.2.3.3}%
+\contentsline {subsection}{\numberline {2.4}Differentiable Optimization Layers}{7}{subsection.2.4}%
+\contentsline {section}{\numberline {3}My Contribution}{8}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Wasserstein Distance Dynamically Robust RP}{8}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}End-To-End $\delta $ Selection}{8}{subsection.3.2}%
+\contentsline {section}{\numberline {4}Next Steps}{9}{section.4}%

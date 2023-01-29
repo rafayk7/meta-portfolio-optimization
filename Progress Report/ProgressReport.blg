@@ -1,54 +1,52 @@
-This is BibTeX, Version 0.99d
+This is BibTeX, Version 0.99d (TeX Live 2022)
 Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
 The top-level auxiliary file: ProgressReport.aux
-Reallocating 'name_of_file' (item size: 1) to 7 items.
 The style file: ieeetr.bst
-Reallocating 'name_of_file' (item size: 1) to 10 items.
 Database file #1: citations.bib
 Warning--I didn't find a database entry for "markowitz1952"
 Warning--I didn't find a database entry for "qian2011risk"
-Warning--I didn't find a database entry for "costa2020robust"
 Warning--I didn't find a database entry for "butler2023integrating"
+Warning--I didn't find a database entry for "famafrench1993"
 Warning--I didn't find a database entry for "blanchet2022distributionally"
-You've used 0 entries,
+You've used 2 entries,
             1876 wiz_defined-function locations,
-            482 strings with 3576 characters,
-and the built_in function-call counts, 20 in all, are:
-= -- 0
-> -- 0
+            498 strings with 3891 characters,
+and the built_in function-call counts, 724 in all, are:
+= -- 81
+> -- 16
 < -- 0
-+ -- 0
-- -- 0
-* -- 2
-:= -- 9
-add.period$ -- 0
-call.type$ -- 0
-change.case$ -- 0
++ -- 6
+- -- 4
+* -- 50
+:= -- 100
+add.period$ -- 2
+call.type$ -- 2
+change.case$ -- 2
 chr.to.int$ -- 0
-cite$ -- 0
-duplicate$ -- 0
-empty$ -- 1
-format.name$ -- 0
-if$ -- 1
+cite$ -- 2
+duplicate$ -- 36
+empty$ -- 64
+format.name$ -- 4
+if$ -- 177
 int.to.chr$ -- 0
-int.to.str$ -- 0
-missing$ -- 0
-newline$ -- 3
-num.names$ -- 0
-pop$ -- 0
+int.to.str$ -- 2
+missing$ -- 2
+newline$ -- 9
+num.names$ -- 2
+pop$ -- 2
 preamble$ -- 1
 purify$ -- 0
 quote$ -- 0
-skip$ -- 1
+skip$ -- 33
 stack$ -- 0
-substring$ -- 0
-swap$ -- 0
+substring$ -- 72
+swap$ -- 20
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
 type$ -- 0
 warning$ -- 0
-while$ -- 0
-width$ -- 0
-write$ -- 2
+while$ -- 8
+width$ -- 3
+write$ -- 24
 (There were 5 warnings)
