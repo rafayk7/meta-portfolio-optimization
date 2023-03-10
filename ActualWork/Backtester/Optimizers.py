@@ -113,7 +113,7 @@ def DRRPW(mu,Q):
     w = cp.Variable(n)
 
     # Kappa
-    k = 2
+    k = 100
 
     # Size of uncertainty set
     delta = 0.05
@@ -157,6 +157,7 @@ def DRRPW(mu,Q):
     x = np.divide(x, np.sum(x))
     
     # Check Risk Parity Condition is actually met
+    # Note: DRRPW will not meet RP, will meet a robust version of RP
     risk_contrib = np.multiply(x, Q.dot(x))
     print(risk_contrib)
     print("DRRPW Worked? {}".format(np.all(np.isclose(risk_contrib, risk_contrib[0]))))
