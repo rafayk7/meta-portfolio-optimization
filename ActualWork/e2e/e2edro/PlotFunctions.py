@@ -51,7 +51,7 @@ def wealth_plot(portfolio_list, names, colors, nplots=1, path=None):
         ax.legend(names, ncol=n, fontsize=12, loc='upper center', bbox_to_anchor=(0.5, -0.15), 
                 handlelength=1)
         # ax.legend(names, fontsize=14)
-        ax.grid(b="on",linestyle=":",linewidth=0.8)
+        ax.grid(visible="on",linestyle=":",linewidth=0.8)
         ax.tick_params(axis='x', labelrotation = 30)
         plt.ylabel("Total wealth", fontsize=14)
         plt.xticks(fontsize=14)
@@ -106,7 +106,7 @@ def sr_plot(portfolio_list, names, colors, path=None):
         ax.plot(plot_df[names[i]], color=colors[i])
 
     ax.legend(names, ncol=3, fontsize=14, loc='upper center', bbox_to_anchor=(0.5, -0.15))
-    ax.grid(b="on",linestyle=":",linewidth=0.8)
+    ax.grid(visible="on",linestyle=":",linewidth=0.8)
     ax.tick_params(axis='x', labelrotation = 30)
     plt.ylabel("2-yr SR", fontsize=14)
     plt.xticks(fontsize=14)
@@ -146,7 +146,7 @@ def sr_bar(portfolio_list, names, colors, path=None):
 
     ax.legend(names, ncol=n, fontsize=12, loc='upper center', bbox_to_anchor=(0.5, -0.15), 
             handlelength=1)
-    ax.grid(b="on",linestyle=":",linewidth=0.8)
+    ax.grid(visible="on",linestyle=":",linewidth=0.8)
     ax.set_xticks(x, plot_df.index.year.to_list())
     
     ax.set_xticks(np.arange(-.6, plot_df.shape[0], 1), minor=True)
@@ -190,7 +190,7 @@ def learn_plot(trained_vals, colors, marker, delta_mark, path=None):
 
     ax.legend(trained_vals.columns, ncol=n, fontsize=12, loc='upper center', 
             bbox_to_anchor=(0.5, -0.15), handlelength=1)
-    ax.grid(b="on",linestyle=":",linewidth=0.8)
+    ax.grid(visible="on",linestyle=":",linewidth=0.8)
 
     ax.set_xlabel(r'Training period', fontsize=14)
     ax.set_ylabel(r'$\gamma$', fontsize=14)
