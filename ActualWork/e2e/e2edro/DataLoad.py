@@ -581,6 +581,7 @@ def AV(start, end, split, freq='weekly', n_obs=104, n_y=None, use_cache=False, s
         tick_list = ['AAPL', 'MSFT', 'AMZN', 'C', 'JPM', 'BAC', 'XOM', 'HAL', 'MCD', 'WMT', 'COST', 'CAT', 'LMT', 'JNJ', 'PFE', 'DIS', 'VZ', 'T', 'ED', 'NEM']
 
         tick_list = ticker_str.split('\n')[:-1]
+        tick_list = ['PDBC', 'KMLM', 'SPY', 'YINN']
         print(tick_list)
 
         if n_y is not None:
