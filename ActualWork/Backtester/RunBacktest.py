@@ -17,6 +17,9 @@ def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30):
     dates = generate_date_list(returns, start=start, end=end)
     first = True
 
+    # Make this weekly
+    # Merge data structures
+
     for date in tqdm(dates):
         # Get Asset Prices for Today
         currentPrices = (prices[prices['date']==str(date)]
@@ -41,7 +44,10 @@ def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30):
         factor_returns = returns_lastn[factors_list]
         asset_returns = returns_lastn.drop(factors_list + ['date', 'RF'], axis=1)
 
-        mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False)
+        # net_train to get optimal delta
+        # perform forward pass to get optimal portfolio
+
+        mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False, bad=True)
         
         x = GetOptimalAllocation(mu, Q, opt_type)
 
