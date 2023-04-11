@@ -5,22 +5,24 @@ import seaborn as sns
 import numpy as np
 import cvxpy as cp
 from util import LoadData, generate_date_list, start, end, factors_list
-from Optimizers import Optimizers, GetOptimalAllocation
+from Optimizers import Optimizers, GetOptimalAllocation, drrpw_net
 from FactorModelling import GetParameterEstimates
+import PortfolioClasses as pc
+import LossFunctions as lf
+from torch.autograd import Variable
+import torch
 
-def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30):
-    returns, assets_list_cleaned, prices = LoadData(path_to_data)
+from torch.utils.data import DataLoader
 
+def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype='broad'):
+    returns, assets_list_cleaned, prices, factors = LoadData(path_to_data, e2e=True, datatype=datatype)
     holdings = pd.DataFrame(columns=['date']+assets_list_cleaned)
     portVal = pd.DataFrame(columns=['date', 'Wealth'])
 
-    dates = generate_date_list(returns, start=start, end=end)
+    dates = generate_date_list(returns, prices, start=start, end=end)
     first = True
-
-    # Make this weekly
-    # Merge data structures
-
-    for date in tqdm(dates):
+    
+    for date in dates:
         # Get Asset Prices for Today
         currentPrices = (prices[prices['date']==str(date)]
             .drop('date',axis=1)
@@ -31,6 +33,8 @@ def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30):
         if first:
             portVal.loc[len(portVal)] = [date] + [InitialValue]
             CurrentPortfolioValue = InitialValue
+            n = len(list(currentPrices))
+            x = np.ones(n) / n
             first = False
         else:     
             CurrentPortfolioValue = np.dot(currentPrices,noShares)
@@ -41,15 +45,15 @@ def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30):
         date = str(date)
         
         returns_lastn = returns[(returns['date'] < date)].tail(lookback)
-        factor_returns = returns_lastn[factors_list]
-        asset_returns = returns_lastn.drop(factors_list + ['date', 'RF'], axis=1)
+        asset_returns = returns_lastn.drop('date', axis=1)
 
-        # net_train to get optimal delta
-        # perform forward pass to get optimal portfolio
+        factor_returns = factors[(factors['date'] < date)].tail(lookback)
+        factor_returns = factor_returns.drop('date', axis=1)
 
         mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False, bad=True)
         
-        x = GetOptimalAllocation(mu, Q, opt_type)
+        x = GetOptimalAllocation(mu, Q, opt_type, x)
+        print(x)
 
         # Update Holdings
         holdings.loc[len(holdings)] = [date] + list(x)
@@ -60,6 +64,7 @@ def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30):
         print('Done {}'.format(date))
     
     portVal['date'] = pd.to_datetime(portVal['date'])
-    portVal = portVal.merge(returns[['date','RF']], how='left', on='date')
+    portVal = portVal.merge(factors[['date','RF']], how='left', on='date')
 
     return holdings, portVal
+

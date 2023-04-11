@@ -1,4 +1,6 @@
 import numpy as np
+from scipy.stats import gmean
+import pandas as pd
 '''
 Inputs: AssetReturns: Pandas DataFrame, each date is a row, one column for each asset
         FactorReturn: Pandas DataFrame, each date is a row, one column for each factor
@@ -6,20 +8,31 @@ Inputs: AssetReturns: Pandas DataFrame, each date is a row, one column for each 
 Outputs: mu: numpy array, key: Symbol. value: return estimate
          Q: nxn Asset Covariance Matrix (n: # of assets)
 '''
-def GetParameterEstimates(AssetReturns, FactorReturns, technique='OLS', log=True):
+def GetParameterEstimates(AssetReturns, FactorReturns, technique='OLS', log=True, bad=False):
     # Only have OLS implemented so far
     if technique!='OLS':
         return [], []
     
-    AssetReturns_np = AssetReturns.to_numpy()
-    FactorReturns_np = FactorReturns.to_numpy()
+    if type(AssetReturns) == pd.core.frame.DataFrame:
+        AssetReturns_np = AssetReturns.to_numpy()
+        FactorReturns_np = FactorReturns.to_numpy()
+    else:
+        AssetReturns_np = AssetReturns.cpu().detach().numpy()[0]
+        FactorReturns_np = FactorReturns.cpu().detach().numpy()[0][:-1]
+
+    if bad:
+        Q = np.cov(AssetReturns_np, rowvar=False)
+        mu = 1 - (gmean(1+AssetReturns_np))
+
+        return mu, Q
+
     T,n = AssetReturns_np.shape
-    _, p = FactorReturns.shape
+    _, p = FactorReturns_np.shape
 
     # Get Data Matrix - Factors
     X = np.zeros((T, p+1))
     X[:,:-1] = np.ones((T,1)) # Add ones to first row
-    X[:,1:] = FactorReturns
+    X[:,1:] = FactorReturns_np
 
     # Get regression coefficients for Assets
     # B = (X^TX)^(-1)X^Ty
@@ -50,10 +63,9 @@ def GetParameterEstimates(AssetReturns, FactorReturns, technique='OLS', log=True
 
 
     if min_eig<0:
+        print('--Not PSD--Adding Min Eigenvalue--')
         Q -= min_eig*np.identity(n)
 
-    print(Q)
-    
     if log:
         print("Shape of X: {}".format(X.shape))
         print("Shape of B: {}".format(B.shape))

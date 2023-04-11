@@ -2,10 +2,32 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-start, end = '2007-01-01', '2007-12-31'
-factors_list = ['Mkt-RF', 'SMB', 'HML']
+start, end = '2015-01-01', '2022-12-31'
+# start, end = '2015-01-01', '2015-01-31'
+factors_list = ['RF', 'SMB', 'HML']
+factors_list = ['RF']
 
-def LoadData(path_to_data):
+def LoadData(path_to_data, e2e=True, datatype='broad'):
+    if e2e:
+        path_to_returns = r'{}\asset_weekly_{}.pkl'.format(path_to_data, datatype)
+        path_to_prices = r'{}\assetprices_weekly_{}.pkl'.format(path_to_data, datatype)
+        path_to_factors = r'{}\factor_weekly_{}.pkl'.format(path_to_data, datatype)
+
+        returns = pd.read_pickle(path_to_returns)
+        prices = pd.read_pickle(path_to_prices)
+        factors = pd.read_pickle(path_to_factors)
+
+        assets_list = prices.columns.to_list()
+
+        returns = returns.reset_index()
+        prices = prices.reset_index()
+        factors = factors.reset_index()
+
+        factors = factors.rename(columns={"Date": "date", "Mkt-RF": "RF"})
+        factors = factors[['date'] + factors_list]
+
+        return returns, assets_list, prices, factors
+
     path_to_prices = r'{}\prices.csv'.format(path_to_data)
     path_to_factors = r'{}\3factors.csv'.format(path_to_data)
 
@@ -32,14 +54,69 @@ def LoadData(path_to_data):
     returns = returns.drop(['Date'], axis=1)
     returns = returns.dropna()
 
-    return returns, assets_list_cleaned, pivot_prices
+    return returns, assets_list_cleaned, pivot_prices, []
 
-def generate_date_list(data, start, end):
+
+def generate_date_list(data, data2, start, end):
     start = datetime.fromisoformat(start)
     end = datetime.fromisoformat(end)
 
+    # Must be in this list
+    must = data2.date.apply(lambda x: x.date()).unique().tolist()
+
     # Train model from start_date to date
-    mask = (data['date'] >= start) & (data['date'] <= end)
+    mask = (data['date'] >= start) & (data['date'] <= end) & data['date'].isin(must)
+
     data = data.loc[mask]
     return data.date.apply(lambda x: x.date()).unique().tolist()
 
+def isPD(B):
+    """Returns true when input is positive-definite, via Cholesky"""
+    try:
+        _ = np.linalg.cholesky(B)
+        return True
+    except np.linalg.LinAlgError:
+        return False
+
+def nearestPD(A):
+    """Find the nearest positive-definite matrix to input
+
+    A Python/Numpy port of John D'Errico's `nearestSPD` MATLAB code [1], which
+    credits [2].
+
+    [1] https://www.mathworks.com/matlabcentral/fileexchange/42885-nearestspd
+
+    [2] N.J. Higham, "Computing a nearest symmetric positive semidefinite
+    matrix" (1988): https://doi.org/10.1016/0024-3795(88)90223-6
+    """
+
+    B = (A + A.T) / 2
+    _, s, V = np.linalg.svd(B)
+
+    H = np.dot(V.T, np.dot(np.diag(s), V))
+
+    A2 = (B + H) / 2
+
+    A3 = (A2 + A2.T) / 2
+
+    if isPD(A3):
+        return A3
+
+    spacing = np.spacing(np.linalg.norm(A))
+    # The above is different from [1]. It appears that MATLAB's `chol` Cholesky
+    # decomposition will accept matrixes with exactly 0-eigenvalue, whereas
+    # Numpy's will not. So where [1] uses `eps(mineig)` (where `eps` is Matlab
+    # for `np.spacing`), we use the above definition. CAVEAT: our `spacing`
+    # will be much larger than [1]'s `eps(mineig)`, since `mineig` is usually on
+    # the order of 1e-16, and `eps(1e-16)` is on the order of 1e-34, whereas
+    # `spacing` will, for Gaussian random matrixes of small dimension, be on
+    # othe order of 1e-16. In practice, both ways converge, as the unit test
+    # below suggests.
+    I = np.eye(A.shape[0])
+    k = 1
+    while not isPD(A3):
+        mineig = np.min(np.real(np.linalg.eigvals(A3)))
+        A3 += I * (-mineig * k**2 + spacing)
+        k += 1
+
+    return A3
