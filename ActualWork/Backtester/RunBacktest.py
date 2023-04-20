@@ -50,8 +50,8 @@ def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, dat
         factor_returns = factors[(factors['date'] < date)].tail(lookback)
         factor_returns = factor_returns.drop('date', axis=1)
 
-        mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False, bad=True)
-        
+        mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False, bad=True, shrinkage=(opt_type == Optimizers.RP_Shrinkage))
+        print(mu)
         x = GetOptimalAllocation(mu, Q, opt_type, x)
         print(x)
 

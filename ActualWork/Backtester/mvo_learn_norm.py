@@ -56,7 +56,7 @@ def mvo_norm_learn(n_y, n_obs, Q, mu):
         phi>=0 # Disallow Short Sales
     ]
 
-    obj = cp.norm(L@phi, 2) + cp.norm(T@phi, 2)
+    obj = cp.norm(T@phi, 2)
 
     # Objective function
     objective = cp.Minimize(obj)    

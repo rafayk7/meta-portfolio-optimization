@@ -22,6 +22,7 @@ class Optimizers(Enum):
     MVO = "MVO"
     RobMVO = "RobMVO"
     RP = "RP"
+    RP_Shrinkage = "RP_Shrinkage"
     DRRPW = "DRRPW"
     EW = "EW"
     DRRPWDeltaTrained = "DRRPWDeltaTrained"
@@ -29,11 +30,12 @@ class Optimizers(Enum):
     CardinalityRP = "CardinalityRP"
     LearnMVOAndRP = "LearnMVOAndRP"
     MVONormTrained = "MVONormTrained"
+    DRRPWTTrained_Diagonal = "DRRPWTTrained_Diagonal"
 
 def GetOptimalAllocation(mu, Q, technique=Optimizers.MVO, x=[]):
     if technique == Optimizers.MVO:
         return MVO(mu,Q)
-    if technique == Optimizers.RP:
+    if technique in [Optimizers.RP, Optimizers.RP_Shrinkage]:
         return RP(mu, Q)
     if technique == Optimizers.DRRPW:
         return DRRPW(mu, Q)
@@ -323,14 +325,20 @@ def drrpw_nominal_learnDelta(n_y, n_obs, Q):
 
     return CvxpyLayer(problem, parameters=[delta], variables=[phi, t])
 
-def drrpw_nominal_learnT(n_y, n_obs, Q):
+def drrpw_nominal_learnT(n_y, n_obs, Q, isDiagonal=False):
     # Variables
     phi = cp.Variable((n_y,1), nonneg=True)
     t = cp.Variable()
 
     # Size of uncertainty set
     delta = cp.Parameter(nonneg=True)
-    T = cp.Parameter((n_y, n_y), PSD=True)
+    if isDiagonal:
+        T_diag = cp.Parameter((n_y, 1), nonneg=True)
+        T = cp.diag(T_diag)
+        params = T_diag
+    else:
+        T = cp.Parameter((n_y, n_y), PSD=True)
+        params = T
 
     # Norm for x. TODO set this to be the Mahalanobis Norm
     p = 2
@@ -379,13 +387,13 @@ def drrpw_nominal_learnT(n_y, n_obs, Q):
     # Construct optimization problem and differentiable layer
     problem = cp.Problem(objective, constraints=constraints)
 
-    return CvxpyLayer(problem, parameters=[T], variables=[phi, t])
+    return CvxpyLayer(problem, parameters=[params], variables=[phi, t])
 
 class drrpw_net(nn.Module):
     """End-to-end Dist. Robust RP with Wasserstein Distance learning neural net module.
     """
     def __init__(self, n_x, n_y, n_obs, opt_layer='nominal', prisk='p_var', perf_loss='sharpe_loss',
-                pred_model='linear', pred_loss_factor=0.5, perf_period=13, train_pred=True, learnT=False, learnDelta=True, set_seed=None, cache_path='cache/'):
+                pred_model='linear', pred_loss_factor=0.5, perf_period=13, train_pred=True, learnT=False, learnDelta=True, set_seed=None, cache_path='cache/', T_Diagonal=False):
         """End-to-end learning neural net module
 
         This NN module implements a linear prediction layer 'pred_layer' and a DRO layer 
@@ -422,6 +430,7 @@ class drrpw_net(nn.Module):
         self.n_obs = n_obs
 
         self.trainT = learnT
+        self.isTDiagonal = T_Diagonal
         self.trainDelta = learnDelta
 
         # Prediction loss function
@@ -450,11 +459,15 @@ class drrpw_net(nn.Module):
 
         self.model_type = 'dro'
 
-        if self.trainT:
+        if self.trainT:                
             Sigma_k = torch.rand(self.n_y, self.n_y)
             Sigma_k = torch.mm(Sigma_k, Sigma_k.t())
             Sigma_k.add_(torch.eye(self.n_y))
-            
+
+            if self.isTDiagonal:
+                Sigma_k = torch.rand(n_y, 1)
+                # Sigma_k = torch.diag(Sigma_k)
+
             self.T = nn.Parameter(Sigma_k)
             self.T.requires_grad = True
             self.delta_init = 2
@@ -523,7 +536,7 @@ class drrpw_net(nn.Module):
         param = None
         if self.trainT:
             param = self.T
-            self.opt_layer = drrpw_nominal_learnT(self.n_y, self.n_obs, Q)
+            self.opt_layer = drrpw_nominal_learnT(self.n_y, self.n_obs, Q, isDiagonal = self.isTDiagonal)
             d = 0
             
         if self.trainDelta:

@@ -21,7 +21,6 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
     portVal = pd.DataFrame(columns=['date', 'Wealth'])
 
     dates = generate_date_list(returns, prices, start=start, end=end)
-    print(dates)
     first = True
 
     # Subtract 1 from n_x and n_y since we have a date column
@@ -39,16 +38,18 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
     # For replicability, set the random seed for the numerical experiments
     set_seed = 200
 
-    mvo_norm_net
-
     if opt_type==Optimizers.MVONormTrained:
         net = mvo_norm_net(n_x, n_y, n_obs, train_pred=True, 
                 learnT=((opt_type==Optimizers.DRRPWTTrained) or (opt_type==Optimizers.MVONormTrained)), learnDelta=(opt_type==Optimizers.DRRPWDeltaTrained), 
-                set_seed=set_seed, opt_layer='nominal').double()
+                set_seed=set_seed, opt_layer='nominal', T_Diagonal=(opt_type==Optimizers.DRRPWTTrained_Diagonal)).double()
     else:
         net = drrpw_net(n_x, n_y, n_obs, train_pred=True, 
-                learnT=((opt_type==Optimizers.DRRPWTTrained) or (opt_type==Optimizers.MVONormTrained)), learnDelta=(opt_type==Optimizers.DRRPWDeltaTrained), 
-                set_seed=set_seed, opt_layer='nominal').double()
+                learnT=(
+                        (opt_type==Optimizers.DRRPWTTrained) 
+                        or (opt_type==Optimizers.MVONormTrained) 
+                        or (opt_type==Optimizers.DRRPWTTrained_Diagonal)), 
+                learnDelta=(opt_type==Optimizers.DRRPWDeltaTrained), 
+                set_seed=set_seed, opt_layer='nominal', T_Diagonal=(opt_type==Optimizers.DRRPWTTrained_Diagonal)).double()
 
     delta_trained = []
 
