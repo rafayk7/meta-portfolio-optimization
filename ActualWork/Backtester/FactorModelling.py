@@ -49,7 +49,7 @@ def GetShrinkageCov(returns):
     # shrinkage constant
     kappa = (phi - rho) / gamma
     shrink = max(0, min(1, kappa / t))
-
+    shrink = 1
     # estimator
     sigma = shrink * prior + (1 - shrink) * sample_cov
 

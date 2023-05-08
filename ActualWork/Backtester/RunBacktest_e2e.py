@@ -49,9 +49,13 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
                         or (opt_type==Optimizers.MVONormTrained) 
                         or (opt_type==Optimizers.DRRPWTTrained_Diagonal)), 
                 learnDelta=(opt_type==Optimizers.DRRPWDeltaTrained), 
-                set_seed=set_seed, opt_layer='nominal', T_Diagonal=(opt_type==Optimizers.DRRPWTTrained_Diagonal)).double()
+                set_seed=set_seed, opt_layer='nominal', T_Diagonal=(opt_type==Optimizers.DRRPWTTrained_Diagonal), cache_path=path_to_data).double()
 
     delta_trained = []
+    loss_values = []
+    grad_values = []
+    T_diagonals = []
+    T_offdiagonals = []
 
     for date in dates:
         # Get Asset Prices for Today
@@ -82,7 +86,8 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
         train_set = DataLoader(pc.SlidingWindow(factor_returns, asset_returns, n_obs, 
                                                 perf_period))
 
-
+        if opt_type == Optimizers.LinearEWAndRPOptimizer:
+            pass
         # net_train to get optimal delta
         net.net_train(train_set, lr=lr, epochs=epochs_per_date)
 
@@ -95,6 +100,11 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
         if opt_type == Optimizers.DRRPWDeltaTrained:
             delta_val = net.delta.item()
             delta_trained.append(delta_val)
+            loss_values.append(net.curr_loss)
+            grad_values.append(net.curr_gradient)
+        elif opt_type in [Optimizers.DRRPWTTrained, Optimizers.DRRPWTTrained_Diagonal]:
+            T_val = net.T.detach().numpy()
+            print(np.diag(T_val))
 
         # mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False, bad=True)
         # x = GetOptimalAllocation(mu, Q, opt_type)
@@ -111,4 +121,4 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
     portVal['date'] = pd.to_datetime(portVal['date'])
     portVal = portVal.merge(factors[['date','RF']], how='left', on='date')
 
-    return holdings, portVal, delta_trained
+    return holdings, portVal, [delta_trained, loss_values, grad_values]

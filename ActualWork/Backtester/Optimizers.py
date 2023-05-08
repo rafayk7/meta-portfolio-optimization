@@ -31,6 +31,7 @@ class Optimizers(Enum):
     LearnMVOAndRP = "LearnMVOAndRP"
     MVONormTrained = "MVONormTrained"
     DRRPWTTrained_Diagonal = "DRRPWTTrained_Diagonal"
+    LinearEWAndRPOptimizer = "LinearEWAndRPOptimizer"
 
 def GetOptimalAllocation(mu, Q, technique=Optimizers.MVO, x=[]):
     if technique == Optimizers.MVO:
@@ -433,6 +434,11 @@ class drrpw_net(nn.Module):
         self.isTDiagonal = T_Diagonal
         self.trainDelta = learnDelta
 
+        # Upper/Lower Bound for Delta
+        self.ub = 0.2
+        self.lb = 0
+
+
         # Prediction loss function
         # if pred_loss_factor is not None:
         #     self.pred_loss_factor = pred_loss_factor
@@ -451,9 +457,7 @@ class drrpw_net(nn.Module):
         # Record the model design: nominal, base or DRO
         # Register 'delta' (ambiguity sizing parameter) for DR layer
         if self.trainDelta:
-            ub = 0.02
-            lb = 0
-            self.delta = nn.Parameter(torch.FloatTensor(1).uniform_(lb, ub))
+            self.delta = nn.Parameter(torch.FloatTensor(1).uniform_(self.lb, self.ub))
             self.delta.requires_grad = True
             self.delta_init = self.delta.item()
 
@@ -578,6 +582,17 @@ class drrpw_net(nn.Module):
             lr = self.lr
 
         print('training for {} epochs'.format(epochs))
+        randomize = False
+        if self.trainDelta and randomize:
+            min_delta, max_delta = max(0, self.delta.item() - 0.1), min(1, self.delta.item() + 0.1)
+
+            # Parameter to use existing delta param with noise, or upper/lower bound
+            use_ma = True
+
+            if use_ma:
+                self.delta = nn.Parameter(torch.FloatTensor(1).uniform_(min_delta, max_delta))
+            else:
+                self.delta = nn.Parameter(torch.FloatTensor(1).uniform_(self.lb, self.ub))
 
         # Define the optimizer and its parameters
         optimizer = torch.optim.Adam(self.parameters(), lr=lr)
@@ -585,11 +600,15 @@ class drrpw_net(nn.Module):
         # Number of elements in training set
         n_train = len(train_set)
 
+        loss_val = 0
+        grad_val = 0
+
         # Train the neural network
         for epoch in range(epochs):
                 
             # TRAINING: forward + backward pass
             train_loss = 0
+            curr_grad = 0
             optimizer.zero_grad()
             
             for t, (x, y, y_perf) in enumerate(train_set):
@@ -601,14 +620,19 @@ class drrpw_net(nn.Module):
                 # print(z_star)
                 # print('---y_perf---')
                 # print(y_perf)
-                loss = (1/n_train) * self.perf_loss(z_star, y_perf.squeeze())
+                if self.trainDelta and randomize:
+                    loss = (1/n_train) * self.perf_loss(z_star, y_perf.squeeze().float())
+                else:
+                    loss = (1/n_train) * self.perf_loss(z_star, y_perf.squeeze())
                 
                 # Backward pass: backpropagation
                 loss.backward()
 
                 # Accumulate loss of the fully trained model
                 train_loss += loss.item()
-        
+                curr_grad += self.delta.grad
+            loss_val += train_loss
+            grad_val += curr_grad
             # Update parameters
             optimizer.step()
 
@@ -618,6 +642,9 @@ class drrpw_net(nn.Module):
                     param.data.clamp_(0.0001)
                 if name=='delta':
                     param.data.clamp_(min=0.0001, max=0.9999)
+
+        self.curr_loss = loss_val
+        self.curr_gradient = grad_val
 
         # Compute and return the validation loss of the model
         if val_set is not None:
