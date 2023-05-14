@@ -33,13 +33,13 @@ class Optimizers(Enum):
     DRRPWTTrained_Diagonal = "DRRPWTTrained_Diagonal"
     LinearEWAndRPOptimizer = "LinearEWAndRPOptimizer"
 
-def GetOptimalAllocation(mu, Q, technique=Optimizers.MVO, x=[]):
+def GetOptimalAllocation(mu, Q, technique=Optimizers.MVO, x=[], delta_robust=0.05):
     if technique == Optimizers.MVO:
         return MVO(mu,Q)
     if technique in [Optimizers.RP, Optimizers.RP_Shrinkage]:
         return RP(mu, Q)
     if technique == Optimizers.DRRPW:
-        return DRRPW(mu, Q)
+        return DRRPW(mu, Q, delta=delta_robust)
     if technique == Optimizers.EW:
         return EW(mu, Q)
     if technique == Optimizers.RobMVO:
@@ -173,8 +173,11 @@ def RP(mu,Q):
         w>=0 # Disallow Short Sales
     ]
 
+    L = np.linalg.cholesky(Q)
+    L /= np.linalg.norm(L)
+
     # Objective Function
-    risk = cp.quad_form(w, Q)
+    risk = cp.norm(L@w,2)
     log_term = 0
     for i in range(n):
         log_term += cp.log(w[i])
@@ -201,6 +204,7 @@ def RP(mu,Q):
 Distributionally Robust Risk Parity With Wasserstein Distance Optimizer
 Inputs: mu: numpy array, key: Symbol. value: return estimate
         Q: nxn Asset Covariance Matrix (n: # of assets)
+        delta: size of the uncertainty set
 Outputs: x: optimal allocations
 
 Formula:
@@ -208,7 +212,7 @@ Formula:
 
 '''
 
-def DRRPW(mu,Q):
+def DRRPW(mu,Q, delta=0):
     
     # # of Assets
     n = len(mu)
@@ -218,9 +222,6 @@ def DRRPW(mu,Q):
 
     # Kappa
     k = 100
-
-    # Size of uncertainty set
-    delta = 0.05
 
     # Norm for x
     p = 2
@@ -243,9 +244,10 @@ def DRRPW(mu,Q):
     # Then, take the 2-norm of L*x
 
     # Idea: (L_1 * x_1)^2 = Q_1 x_1
-
+    
     L = np.linalg.cholesky(Q)
-
+    L /= np.linalg.norm(L)
+    
     obj = cp.power(cp.norm(L@w,2) + math.sqrt(delta)*cp.norm(w, p),2)
     obj = obj - k*log_term
 
@@ -263,8 +265,6 @@ def DRRPW(mu,Q):
     # Check Risk Parity Condition is actually met
     # Note: DRRPW will not meet RP, will meet a robust version of RP
     risk_contrib = np.multiply(x, Q.dot(x))
-    print(risk_contrib)
-    print("DRRPW Worked? {}".format(np.all(np.isclose(risk_contrib, risk_contrib[0]))))
 
     return x
 
@@ -298,6 +298,8 @@ def drrpw_nominal_learnDelta(n_y, n_obs, Q):
     except:
         Q = nearestPD(Q)
         L = np.linalg.cholesky(Q)
+
+    L /= np.linalg.norm(L)
 
     # Constraints
     constraints = [
@@ -389,12 +391,12 @@ def drrpw_nominal_learnT(n_y, n_obs, Q, isDiagonal=False):
     problem = cp.Problem(objective, constraints=constraints)
 
     return CvxpyLayer(problem, parameters=[params], variables=[phi, t])
-
+from torch.utils.tensorboard import SummaryWriter
 class drrpw_net(nn.Module):
     """End-to-end Dist. Robust RP with Wasserstein Distance learning neural net module.
     """
     def __init__(self, n_x, n_y, n_obs, opt_layer='nominal', prisk='p_var', perf_loss='sharpe_loss',
-                pred_model='linear', pred_loss_factor=0.5, perf_period=13, train_pred=True, learnT=False, learnDelta=True, set_seed=None, cache_path='cache/', T_Diagonal=False):
+                pred_model='linearx', pred_loss_factor=0.5, perf_period=13, train_pred=False, learnT=False, learnDelta=True, set_seed=None, cache_path='cache/', T_Diagonal=False):
         """End-to-end learning neural net module
 
         This NN module implements a linear prediction layer 'pred_layer' and a DRO layer 
@@ -435,7 +437,7 @@ class drrpw_net(nn.Module):
         self.trainDelta = learnDelta
 
         # Upper/Lower Bound for Delta
-        self.ub = 0.2
+        self.ub = 0.5
         self.lb = 0
 
 
@@ -530,7 +532,6 @@ class drrpw_net(nn.Module):
         # Covariance Matrix
         Q = np.cov(Y.cpu().detach().numpy(), rowvar=False)
 
-
         # Optimization Layer
         # self.opt_layer = drrpw_nominal(n_y, n_obs, Q)
 
@@ -559,7 +560,7 @@ class drrpw_net(nn.Module):
     #-----------------------------------------------------------------------------------------------
     # net_train: Train the e2e neural net
     #-----------------------------------------------------------------------------------------------
-    def net_train(self, train_set, val_set=None, epochs=None, lr=None):
+    def net_train(self, train_set, val_set=None, epochs=None, lr=None, date=None):
         """Neural net training module
         
         Inputs
@@ -580,22 +581,26 @@ class drrpw_net(nn.Module):
             epochs = self.epochs
         if lr is None:
             lr = self.lr
-
+        writer = SummaryWriter(log_dir='board_data/{}'.format(date))
+        
         print('training for {} epochs'.format(epochs))
         randomize = False
         if self.trainDelta and randomize:
             min_delta, max_delta = max(0, self.delta.item() - 0.1), min(1, self.delta.item() + 0.1)
 
             # Parameter to use existing delta param with noise, or upper/lower bound
-            use_ma = True
+            use_ma = False
+            set_pointfive = True
 
             if use_ma:
                 self.delta = nn.Parameter(torch.FloatTensor(1).uniform_(min_delta, max_delta))
+            elif set_pointfive:
+                self.delta = nn.Parameter(torch.FloatTensor(1).uniform_(0, 1))
             else:
-                self.delta = nn.Parameter(torch.FloatTensor(1).uniform_(self.lb, self.ub))
+                self.delta = nn.Parameter(torch.FloatTensor(1).uniform_(self.delta.item(), self.ub))
 
         # Define the optimizer and its parameters
-        optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+        optimizer = torch.optim.SGD(self.parameters(), lr=0.001, momentum=0.9)
 
         # Number of elements in training set
         n_train = len(train_set)
@@ -603,14 +608,21 @@ class drrpw_net(nn.Module):
         loss_val = 0
         grad_val = 0
 
+        # print("Delta Before: {}".format(self.delta.item()))
+        prev_delta = self.delta.item()
+
         # Train the neural network
         for epoch in range(epochs):
+            # print("Epoch: {}".format(epoch))
                 
             # TRAINING: forward + backward pass
             train_loss = 0
             curr_grad = 0
+            avg_ret = 0
+            avg_risk = 0
             optimizer.zero_grad()
             
+            avg_Q = 0
             for t, (x, y, y_perf) in enumerate(train_set):
                 # Forward pass: predict and optimize
                 z_star, y_hat = self(x.squeeze(), y.squeeze())
@@ -621,31 +633,63 @@ class drrpw_net(nn.Module):
                 # print('---y_perf---')
                 # print(y_perf)
                 if self.trainDelta and randomize:
-                    loss = (1/n_train) * self.perf_loss(z_star, y_perf.squeeze().float())
+                    y_perf = y.squeeze().float()
+                    # y_perf = y_perf / torch.max(torch.abs(y_perf)).item()
+                    # print(y_perf)
+                    loss = (1/n_train) * self.perf_loss(z_star, y_perf)
+                    ret = torch.mean(y_perf @ z_star)
+                    risk = torch.std(y_perf @ z_star)
                 else:
-                    loss = (1/n_train) * self.perf_loss(z_star, y_perf.squeeze())
-                
+                    y_perf = y.squeeze()
+                    loss = (1/n_train) * self.perf_loss(z_star, y_perf)
+                    ret = torch.mean(y_perf @ z_star)
+                    risk = torch.std(y_perf @ z_star)
                 # Backward pass: backpropagation
                 loss.backward()
 
                 # Accumulate loss of the fully trained model
                 train_loss += loss.item()
-                curr_grad += self.delta.grad
+                curr_grad = (curr_grad+self.delta.grad)/2
+                avg_ret = (avg_ret+ret)/2
+                avg_risk = (avg_risk+risk)/2
+            new_delta = self.delta.item()
+            writer.add_scalar("Loss/train", train_loss, epoch)
+            writer.add_scalar("Grad/delta", self.delta.grad, epoch)
+            writer.add_scalar("Value/delta", self.delta.item(), epoch)
+            writer.add_scalar("Value/Return", avg_ret, epoch)
+            writer.add_scalar("Value/Risk", avg_risk, epoch)
+            writer.add_scalar("Value/SharpeRatio", avg_ret/avg_risk, epoch)
+            writer.flush()
+            # print("Gradient: {}".format(self.delta.grad))
             loss_val += train_loss
-            grad_val += curr_grad
+            grad_val = (grad_val+curr_grad)/2
+            delta_grad = self.delta.grad
+            # torch.nn.utils.clip_grad_value_(self.parameters(), 0.5)
+
             # Update parameters
             optimizer.step()
+            # lr_scheduler.step()      
 
             # Ensure that gamma, delta > 0 after taking a descent step
             for name, param in self.named_parameters():
                 if name=='gamma':
                     param.data.clamp_(0.0001)
                 if name=='delta':
-                    param.data.clamp_(min=0.0001, max=0.9999)
+                    param.data.clamp_(min=0.0001, max=1.0)
+            after_delta = self.delta.item()
+
+            delta_increased = (after_delta-prev_delta) >= 0
+            gradient_pos = self.delta.grad > 0
+            if delta_increased and gradient_pos:
+                print("---PROBLEM---")
+                print("Delta After: {}. Delta Before: {}. Gradient: {}".format(after_delta, prev_delta, delta_grad))
+            elif (not delta_increased) and (not gradient_pos):
+                print("---PROBLEM---")
+                print("Delta After: {}. Delta Before: {}. Gradient: {}".format(after_delta, prev_delta, delta_grad))                
 
         self.curr_loss = loss_val
         self.curr_gradient = grad_val
-
+        
         # Compute and return the validation loss of the model
         if val_set is not None:
 

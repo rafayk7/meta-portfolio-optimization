@@ -24,13 +24,13 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
     first = True
 
     # Subtract 1 from n_x and n_y since we have a date column
-    n_x, n_y, n_obs, perf_period = factors.shape[1] - 1, returns.shape[1] - 1, 40, 10
+    n_x, n_y, n_obs, perf_period = factors.shape[1] - 1, returns.shape[1] - 1, 40, 11
     lookback = 52
     print("# Factors: {}. # Assets: {}".format(n_x, n_y))
 
     # Hyperparameters
-    lr = 0.001
-    epochs_per_date = 10
+    lr = 0.01
+    epochs_per_date = 30
 
     if opt_type==Optimizers.CardinalityRP:
         cardinality=10
@@ -43,12 +43,12 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
                 learnT=((opt_type==Optimizers.DRRPWTTrained) or (opt_type==Optimizers.MVONormTrained)), learnDelta=(opt_type==Optimizers.DRRPWDeltaTrained), 
                 set_seed=set_seed, opt_layer='nominal', T_Diagonal=(opt_type==Optimizers.DRRPWTTrained_Diagonal)).double()
     else:
-        net = drrpw_net(n_x, n_y, n_obs, train_pred=True, 
+        net = drrpw_net(n_x, n_y, n_obs, train_pred=True,
                 learnT=(
-                        (opt_type==Optimizers.DRRPWTTrained) 
-                        or (opt_type==Optimizers.MVONormTrained) 
-                        or (opt_type==Optimizers.DRRPWTTrained_Diagonal)), 
-                learnDelta=(opt_type==Optimizers.DRRPWDeltaTrained), 
+                        (opt_type==Optimizers.DRRPWTTrained)
+                        or (opt_type==Optimizers.MVONormTrained)
+                        or (opt_type==Optimizers.DRRPWTTrained_Diagonal)),
+                learnDelta=(opt_type==Optimizers.DRRPWDeltaTrained),
                 set_seed=set_seed, opt_layer='nominal', T_Diagonal=(opt_type==Optimizers.DRRPWTTrained_Diagonal), cache_path=path_to_data).double()
 
     delta_trained = []
@@ -83,13 +83,35 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
         factor_returns = factors[(factors['date'] < date)].tail(lookback)
         factor_returns = factor_returns.drop('date', axis=1)
 
+        batching = True
+        if batching:
+            # convert numpy array to tensor
+            asset_returns_tensor = torch.from_numpy(asset_returns.to_numpy())
+
+            # define window size
+            window_size = 52
+
+            # calculate number of training points
+            num_training_points = asset_returns_tensor.size(0) - window_size + 1
+
+            # initialize tensor to hold sliding windows
+            sliding_windows = torch.zeros((num_training_points, window_size, asset_returns_tensor.size(1)))
+
+            # populate tensor with sliding windows
+            for i in range(num_training_points):
+                sliding_windows[i] = asset_returns_tensor[i:i+window_size]
+
+                
+
+
         train_set = DataLoader(pc.SlidingWindow(factor_returns, asset_returns, n_obs, 
                                                 perf_period))
 
         if opt_type == Optimizers.LinearEWAndRPOptimizer:
             pass
+
         # net_train to get optimal delta
-        net.net_train(train_set, lr=lr, epochs=epochs_per_date)
+        net.net_train(train_set, lr=lr, epochs=epochs_per_date, date=date)
 
         factor_ret_tensor = Variable(torch.tensor(factor_returns.values, dtype=torch.double))
         asset_ret_tensor = Variable(torch.tensor(asset_returns.values, dtype=torch.double))
@@ -117,8 +139,10 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
         print("x: {}. CurrentPortfolioValue: {}. currentPrices: {}".format(x, CurrentPortfolioValue, currentPrices))
         noShares = np.divide(x*CurrentPortfolioValue, currentPrices)
         print('Done {}'.format(date))
+        # break
     
     portVal['date'] = pd.to_datetime(portVal['date'])
     portVal = portVal.merge(factors[['date','RF']], how='left', on='date')
+
 
     return holdings, portVal, [delta_trained, loss_values, grad_values]
