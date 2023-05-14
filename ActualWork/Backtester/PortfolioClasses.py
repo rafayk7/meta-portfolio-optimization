@@ -42,8 +42,8 @@ class SlidingWindow(Dataset):
 
     def __getitem__(self, index):
         x = self.X[index:index+self.n_obs+1]
-        y = self.Y[index:index+self.n_obs]
-        y_perf = self.Y[index+self.n_obs : index+self.n_obs+self.perf_period+1]
+        y = self.Y[index:index+self.n_obs+self.perf_period+1]
+        y_perf = self.Y[index:index+self.n_obs+self.perf_period+1]
         return (x, y, y_perf)
 
     def __len__(self):

@@ -14,7 +14,7 @@ import torch
 
 from torch.utils.data import DataLoader
 
-def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype='broad'):
+def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype='broad', delta_rob=0.05):
     returns, assets_list_cleaned, prices, factors = LoadData(path_to_data, e2e=True, datatype=datatype)
     holdings = pd.DataFrame(columns=['date']+assets_list_cleaned)
     portVal = pd.DataFrame(columns=['date', 'Wealth'])
@@ -51,8 +51,8 @@ def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, dat
         factor_returns = factor_returns.drop('date', axis=1)
 
         mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False, bad=True, shrinkage=(opt_type == Optimizers.RP_Shrinkage))
-        print(mu)
-        x = GetOptimalAllocation(mu, Q, opt_type, x)
+        print(Q)
+        x = GetOptimalAllocation(mu, Q, opt_type, x, delta_robust=delta_rob)
         print(x)
 
         # Update Holdings

@@ -3,6 +3,7 @@ from RunBacktest_e2e import RunBacktest_e2e
 from Optimizers import Optimizers
 from Plotter import calculateSharpe,PlotWealth
 import pickle
+import numpy as np
 
 path_to_data = r"C:\Users\Rafay\Documents\thesis3\thesis\ActualWork\e2e\cache"
 path_to_results = r"C:\Users\Rafay\Documents\thesis3\thesis\ActualWork\Results"
@@ -13,7 +14,8 @@ datatype = 'cross_asset'
 
 opt_try = [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWDeltaTrained]
 # opt_try = [Optimizers.DRRPWDeltaTrained]
-opt_try = [Optimizers.EW, Optimizers.RP, Optimizers.DRRPWDeltaTrained]
+opt_try = [Optimizers.DRRPWDeltaTrained]
+
 
 for opt_type in opt_try:
     print(opt_type.value)
@@ -27,11 +29,19 @@ for opt_type in opt_try:
             with open(path_to_results + '{}_gradvals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
                 pickle.dump(hyperparams[2], f)
     else:
-        holdings, portVal = RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype=datatype)
+        if opt_type==Optimizers.DRRPW:
+            for d in [100]:
+                holdings, portVal = RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype=datatype, delta_rob=d)
+                name = "{}_delta{}".format(opt_type.value, d)
+                print(name)
 
-
-    portVal.to_pickle(path_to_results + '{}_{}_value.pkl'.format(opt_type.value, datatype, lookback))
-    holdings.to_pickle(path_to_results + '{}_{}_holdings.pkl'.format(opt_type.value, datatype, lookback))
+                portVal.to_pickle(path_to_results + '{}_{}_value.pkl'.format(name, datatype, lookback))
+                holdings.to_pickle(path_to_results + '{}_{}_holdings.pkl'.format(name, datatype, lookback))
+        else:
+            holdings, portVal = RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype=datatype)
+            portVal.to_pickle(path_to_results + '{}_{}_value.pkl'.format(opt_type.value, datatype, lookback))
+            holdings.to_pickle(path_to_results + '{}_{}_holdings.pkl'.format(opt_type.value, datatype, lookback))
+    
 
     SharpeRatio = calculateSharpe(portVal)
 

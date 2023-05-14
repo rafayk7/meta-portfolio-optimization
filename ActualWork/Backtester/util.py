@@ -1,11 +1,63 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import torch
 
 start, end = '2015-01-01', '2022-12-31'
 # start, end = '2015-01-01', '2015-01-31'
 factors_list = ['RF', 'SMB', 'HML']
 factors_list = ['RF']
+
+class BatchUtils:
+    def __init__(self) -> None:
+        pass
+
+    def convert_to_sw_batched(self, input_numpy, window_size):
+        # convert numpy array to tensor
+        input_tensor = torch.from_numpy(input_numpy.to_numpy())
+
+        # calculate number of training points
+        num_training_points = input_tensor.size(0) - window_size + 1
+
+        # initialize tensor to hold sliding windows
+        sliding_windows = torch.zeros((num_training_points, window_size, input_tensor.size(1)))
+
+        # populate tensor with sliding windows
+        for i in range(num_training_points):
+            sliding_windows[i] = input_tensor[i:i+window_size]
+        
+        return sliding_windows
+
+    def convert_performance_periods(self, input_numpy, window_size):
+        input_tensor = torch.from_numpy(input_numpy.to_numpy())
+        num_training_points = input_tensor.size(0) - window_size + 1
+
+        # define label tensor shape
+        label_shape = (num_training_points, 1, input_tensor.size(1))
+
+        # initialize label tensor to zeros
+        label_set = torch.zeros(label_shape)
+
+        # populate label tensor with next time period returns
+        for i in range(num_training_points-1):
+            label_set[i:i+1] = input_tensor[i+window_size:i+window_size+1].unsqueeze(1)
+
+        return label_set
+    
+    def compute_covariance_matrix(sliding_windows):
+        # get the number of batches and number of assets
+        num_batches, window_size, num_assets = sliding_windows.size()
+
+        # initialize covariance matrix tensor
+        covariance_matrix_tensor = torch.zeros((num_batches, num_assets, num_assets))
+
+        # compute covariance matrix for each batch
+        for i in range(num_batches):
+            batch = sliding_windows[i]
+            covariance_matrix = torch.Tensor(np.cov(batch.numpy().T))
+            covariance_matrix_tensor[i] = covariance_matrix
+
+        return covariance_matrix_tensor
 
 def LoadData(path_to_data, e2e=True, datatype='broad'):
     if e2e:
