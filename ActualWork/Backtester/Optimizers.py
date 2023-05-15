@@ -2,7 +2,7 @@ from enum import Enum
 import numpy as np
 import cvxpy as cp
 import math
-from util import nearestPD
+from util import nearestPD, BatchUtils
 
 import numpy as np
 import cvxpy as cp
@@ -269,7 +269,8 @@ def DRRPW(mu,Q, delta=0):
     return x
 
 
-def drrpw_nominal_learnDelta(n_y, n_obs, Q):
+def drrpw_nominal_learnDelta(Q):
+    n_y = Q.size()[-1]
     # Variables
     phi = cp.Variable((n_y,1), nonneg=True)
     t = cp.Variable()
@@ -436,6 +437,8 @@ class drrpw_net(nn.Module):
         self.isTDiagonal = T_Diagonal
         self.trainDelta = learnDelta
 
+        self.batch_utils = BatchUtils()
+
         # Upper/Lower Bound for Delta
         self.ub = 0.5
         self.lb = 0
@@ -498,7 +501,7 @@ class drrpw_net(nn.Module):
     #-----------------------------------------------------------------------------------------------
     # forward: forward pass of the e2e neural net
     #-----------------------------------------------------------------------------------------------
-    def forward(self, X, Y):
+    def forward(self, X, Y, batching=False):
         """
         Forward pass of the NN module
 
@@ -530,13 +533,10 @@ class drrpw_net(nn.Module):
         solver_args = {'solve_method': 'SCS'}
 
         # Covariance Matrix
-        Q = np.cov(Y.cpu().detach().numpy(), rowvar=False)
-
-        # Optimization Layer
-        # self.opt_layer = drrpw_nominal(n_y, n_obs, Q)
-
-        # Optimize z per scenario
-        # Determine whether nominal or dro model
+        if batching:
+            Q = self.batch_utils.compute_covariance_matrix(Y)
+        else:
+            Q = np.cov(Y.cpu().detach().numpy(), rowvar=False)
 
         param = None
         if self.trainT:
@@ -546,21 +546,28 @@ class drrpw_net(nn.Module):
             
         if self.trainDelta:
             param = self.delta
-            self.opt_layer = drrpw_nominal_learnDelta(self.n_y, self.n_obs, Q)
             d = 1
-        z_star, _ = self.opt_layer(param, solver_args=solver_args)
+            if batching:
+                batch_size, num_assets, num_assets = Q.size()
+                z_stars = torch.zeros((batch_size, num_assets))
+                for indx, cov in enumerate(Q):
+                    self.opt_layer = drrpw_nominal_learnDelta(cov)
+                    z_star, _ = self.opt_layer(param, solver_args=solver_args)
+                    z_star = torch.divide(z_star, torch.sum(z_star))
+                    z_stars[indx] = z_star.squeeze()
 
+                return z_stars, []
+    
+        z_star, _ = self.opt_layer(param, solver_args=solver_args)
         softmax = torch.nn.Softmax(dim=d)
         z_star = softmax(z_star)
-        
-        # z_star = np.divide(z_star, np.sum(z_star))
-        
+                
         return z_star, []
 
     #-----------------------------------------------------------------------------------------------
     # net_train: Train the e2e neural net
     #-----------------------------------------------------------------------------------------------
-    def net_train(self, train_set, val_set=None, epochs=None, lr=None, date=None):
+    def net_train(self, train_set, val_set=None, epochs=None, lr=None, date=None, batching=False):
         """Neural net training module
         
         Inputs
@@ -600,95 +607,105 @@ class drrpw_net(nn.Module):
                 self.delta = nn.Parameter(torch.FloatTensor(1).uniform_(self.delta.item(), self.ub))
 
         # Define the optimizer and its parameters
-        optimizer = torch.optim.SGD(self.parameters(), lr=0.001, momentum=0.9)
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.01)
 
         # Number of elements in training set
         n_train = len(train_set)
+        print(n_train)
 
         loss_val = 0
         grad_val = 0
 
         # print("Delta Before: {}".format(self.delta.item()))
         prev_delta = self.delta.item()
+        print("Before Delta: {}".format(prev_delta))
+        if batching:
+            training = train_set[0]
+            y_perf = train_set[1]
 
-        # Train the neural network
-        for epoch in range(epochs):
-            # print("Epoch: {}".format(epoch))
-                
-            # TRAINING: forward + backward pass
-            train_loss = 0
-            curr_grad = 0
-            avg_ret = 0
-            avg_risk = 0
-            optimizer.zero_grad()
-            
-            avg_Q = 0
-            for t, (x, y, y_perf) in enumerate(train_set):
-                # Forward pass: predict and optimize
-                z_star, y_hat = self(x.squeeze(), y.squeeze())
+            for epoch in range(epochs):
+                optimizer.zero_grad()
+                # Get optimal allocation
+                z_star, _ = self(None, training, batching=True)
+                perf = torch.transpose(y_perf.view(z_star.size()), 0, 1)
 
-                # Loss function
-                # print('---z_star---')
-                # print(z_star)
-                # print('---y_perf---')
-                # print(y_perf)
-                if self.trainDelta and randomize:
-                    y_perf = y.squeeze().float()
-                    # y_perf = y_perf / torch.max(torch.abs(y_perf)).item()
-                    # print(y_perf)
-                    loss = (1/n_train) * self.perf_loss(z_star, y_perf)
-                    ret = torch.mean(y_perf @ z_star)
-                    risk = torch.std(y_perf @ z_star)
-                else:
-                    y_perf = y.squeeze()
-                    loss = (1/n_train) * self.perf_loss(z_star, y_perf)
-                    ret = torch.mean(y_perf @ z_star)
-                    risk = torch.std(y_perf @ z_star)
-                # Backward pass: backpropagation
+                ret = torch.mean(perf @ z_star)
+                risk = torch.std(perf @ z_star)
+                # Compute loss
+                loss = (1/n_train) * self.perf_loss(z_star, perf)
+
+                # backward
                 loss.backward()
+                print("Ret: {}. Risk: {}. SR: {}. Grad: {}. Portfolio: {}".format(ret, risk, ret/risk, self.delta.grad, z_star))
 
-                # Accumulate loss of the fully trained model
-                train_loss += loss.item()
-                curr_grad = (curr_grad+self.delta.grad)/2
-                avg_ret = (avg_ret+ret)/2
-                avg_risk = (avg_risk+risk)/2
-            new_delta = self.delta.item()
-            writer.add_scalar("Loss/train", train_loss, epoch)
-            writer.add_scalar("Grad/delta", self.delta.grad, epoch)
-            writer.add_scalar("Value/delta", self.delta.item(), epoch)
-            writer.add_scalar("Value/Return", avg_ret, epoch)
-            writer.add_scalar("Value/Risk", avg_risk, epoch)
-            writer.add_scalar("Value/SharpeRatio", avg_ret/avg_risk, epoch)
-            writer.flush()
-            # print("Gradient: {}".format(self.delta.grad))
-            loss_val += train_loss
-            grad_val = (grad_val+curr_grad)/2
-            delta_grad = self.delta.grad
-            # torch.nn.utils.clip_grad_value_(self.parameters(), 0.5)
+                # Update parameters
+                optimizer.step()
+        else:
+            # Train the neural network
+            for epoch in range(epochs):
+                # print("Epoch: {}".format(epoch))
+                    
+                # TRAINING: forward + backward pass
+                train_loss = 0
+                curr_grad = 0
+                avg_ret = 0
+                avg_risk = 0
+                optimizer.zero_grad()
+                
+                avg_Q = 0
+                for t, (x, y, y_perf) in enumerate(train_set):
+                    # Forward pass: predict and optimize
+                    z_star, y_hat = self(x.squeeze(), y.squeeze())
 
-            # Update parameters
-            optimizer.step()
-            # lr_scheduler.step()      
+                    # Loss function
+                    # print('---z_star---')
+                    # print(z_star)
+                    # print('---y_perf---')
+                    # print(y_perf)
+                    if self.trainDelta and randomize:
+                        y_perf = y.squeeze().float()
+                        # y_perf = y_perf / torch.max(torch.abs(y_perf)).item()
+                        # print(y_perf)
+                        loss = (1/n_train) * self.perf_loss(z_star, y_perf)
+                        ret = torch.mean(y_perf @ z_star)
+                        risk = torch.std(y_perf @ z_star)
+                    else:
+                        y_perf = y.squeeze()
+                        loss = (1/n_train) * self.perf_loss(z_star, y_perf)
+                        ret = torch.mean(y_perf @ z_star)
+                        risk = torch.std(y_perf @ z_star)
+                    # Backward pass: backpropagation
+                    loss.backward()
 
-            # Ensure that gamma, delta > 0 after taking a descent step
-            for name, param in self.named_parameters():
-                if name=='gamma':
-                    param.data.clamp_(0.0001)
-                if name=='delta':
-                    param.data.clamp_(min=0.0001, max=1.0)
-            after_delta = self.delta.item()
+                    # Accumulate loss of the fully trained model
+                    train_loss += loss.item()
+                    curr_grad = (curr_grad+self.delta.grad)/2
+                    avg_ret = (avg_ret+ret)/2
+                    avg_risk = (avg_risk+risk)/2
+                new_delta = self.delta.item()
+                writer.add_scalar("Loss/train", train_loss, epoch)
+                writer.add_scalar("Grad/delta", self.delta.grad, epoch)
+                writer.add_scalar("Value/delta", self.delta.item(), epoch)
+                writer.add_scalar("Value/Return", avg_ret, epoch)
+                writer.add_scalar("Value/Risk", avg_risk, epoch)
+                writer.add_scalar("Value/SharpeRatio", avg_ret/avg_risk, epoch)
+                writer.flush()
+                # print("Gradient: {}".format(self.delta.grad))
+                loss_val += train_loss
+                grad_val = (grad_val+curr_grad)/2
+                delta_grad = self.delta.grad
+                # torch.nn.utils.clip_grad_value_(self.parameters(), 0.5)
 
-            delta_increased = (after_delta-prev_delta) >= 0
-            gradient_pos = self.delta.grad > 0
-            if delta_increased and gradient_pos:
-                print("---PROBLEM---")
-                print("Delta After: {}. Delta Before: {}. Gradient: {}".format(after_delta, prev_delta, delta_grad))
-            elif (not delta_increased) and (not gradient_pos):
-                print("---PROBLEM---")
-                print("Delta After: {}. Delta Before: {}. Gradient: {}".format(after_delta, prev_delta, delta_grad))                
+        grad_val = self.delta.grad
 
-        self.curr_loss = loss_val
-        self.curr_gradient = grad_val
+        print("After Delta: {}. Gradient: {}".format(self.delta.item(), grad_val))
+
+        # Ensure that gamma, delta > 0 after taking a descent step
+        for name, param in self.named_parameters():
+            if name=='gamma':
+                param.data.clamp_(0.0001)
+            if name=='delta':
+                param.data.clamp_(min=0.0001, max=1.0)
         
         # Compute and return the validation loss of the model
         if val_set is not None:
