@@ -14,7 +14,7 @@ import torch
 
 from torch.utils.data import DataLoader
 
-def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype='broad', delta_rob=0.05):
+def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 52, datatype='broad', delta_rob=0.05):
     returns, assets_list_cleaned, prices, factors = LoadData(path_to_data, e2e=True, datatype=datatype)
     holdings = pd.DataFrame(columns=['date']+assets_list_cleaned)
     portVal = pd.DataFrame(columns=['date', 'Wealth'])
@@ -43,15 +43,13 @@ def RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, dat
         # We don't want the current date information, hence the lack of equality
         # Get last 30
         date = str(date)
-        
+        lookback = 52
         returns_lastn = returns[(returns['date'] < date)].tail(lookback)
         asset_returns = returns_lastn.drop('date', axis=1)
-
         factor_returns = factors[(factors['date'] < date)].tail(lookback)
         factor_returns = factor_returns.drop('date', axis=1)
 
         mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False, bad=True, shrinkage=(opt_type == Optimizers.RP_Shrinkage))
-        print(Q)
         x = GetOptimalAllocation(mu, Q, opt_type, x, delta_robust=delta_rob)
         print(x)
 

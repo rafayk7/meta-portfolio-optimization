@@ -3,7 +3,7 @@ import numpy as np
 from datetime import datetime
 import torch
 
-start, end = '2015-01-01', '2022-12-31'
+start, end = '2016-01-01', '2022-12-31'
 # start, end = '2015-01-01', '2015-01-31'
 factors_list = ['RF', 'SMB', 'HML']
 factors_list = ['RF']
@@ -33,18 +33,18 @@ class BatchUtils:
         num_training_points = input_tensor.size(0) - window_size + 1
 
         # define label tensor shape
-        label_shape = (num_training_points, 1, input_tensor.size(1))
+        label_shape = (num_training_points, input_tensor.size(1), 1)
 
         # initialize label tensor to zeros
         label_set = torch.zeros(label_shape)
 
         # populate label tensor with next time period returns
         for i in range(num_training_points-1):
-            label_set[i:i+1] = input_tensor[i+window_size:i+window_size+1].unsqueeze(1)
+            label_set[i:i+1] = input_tensor[i+window_size:i+window_size+1].unsqueeze(2)
 
         return label_set
     
-    def compute_covariance_matrix(sliding_windows):
+    def compute_covariance_matrix(self, sliding_windows):
         # get the number of batches and number of assets
         num_batches, window_size, num_assets = sliding_windows.size()
 
@@ -54,8 +54,14 @@ class BatchUtils:
         # compute covariance matrix for each batch
         for i in range(num_batches):
             batch = sliding_windows[i]
-            covariance_matrix = torch.Tensor(np.cov(batch.numpy().T))
-            covariance_matrix_tensor[i] = covariance_matrix
+            Q = torch.Tensor(np.cov(batch.numpy().T))
+            try:
+                L = np.linalg.cholesky(Q)
+            except:
+                Q = nearestPD(Q)
+                L = np.linalg.cholesky(Q)
+            L /= np.linalg.norm(L)
+            covariance_matrix_tensor[i] = torch.from_numpy(L)
 
         return covariance_matrix_tensor
 

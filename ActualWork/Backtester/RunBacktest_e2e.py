@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import cvxpy as cp
-from util import LoadData, generate_date_list, start, end, factors_list
+from util import LoadData, generate_date_list, start, end, factors_list, BatchUtils
 from Optimizers import Optimizers, GetOptimalAllocation, drrpw_net
 from FactorModelling import GetParameterEstimates
 import PortfolioClasses as pc
@@ -14,6 +14,8 @@ import torch
 from mvo_learn_norm import mvo_norm_net
 
 from torch.utils.data import DataLoader
+
+batch_utils = BatchUtils()
 
 def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype='broad'):
     returns, assets_list_cleaned, prices, factors = LoadData(path_to_data, e2e=True, datatype=datatype)
@@ -25,12 +27,12 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
 
     # Subtract 1 from n_x and n_y since we have a date column
     n_x, n_y, n_obs, perf_period = factors.shape[1] - 1, returns.shape[1] - 1, 40, 11
-    lookback = 52
+    lookback = 104
     print("# Factors: {}. # Assets: {}".format(n_x, n_y))
 
     # Hyperparameters
     lr = 0.01
-    epochs_per_date = 30
+    epochs_per_date = 50
 
     if opt_type==Optimizers.CardinalityRP:
         cardinality=10
@@ -85,45 +87,34 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
 
         batching = True
         if batching:
-            # convert numpy array to tensor
-            asset_returns_tensor = torch.from_numpy(asset_returns.to_numpy())
-
-            # define window size
             window_size = 52
-
-            # calculate number of training points
-            num_training_points = asset_returns_tensor.size(0) - window_size + 1
-
-            # initialize tensor to hold sliding windows
-            sliding_windows = torch.zeros((num_training_points, window_size, asset_returns_tensor.size(1)))
-
-            # populate tensor with sliding windows
-            for i in range(num_training_points):
-                sliding_windows[i] = asset_returns_tensor[i:i+window_size]
-
-                
+            batched_tensor = batch_utils.convert_to_sw_batched(asset_returns, window_size)
+            performance_tensor = batch_utils.convert_performance_periods(asset_returns, window_size)
 
 
-        train_set = DataLoader(pc.SlidingWindow(factor_returns, asset_returns, n_obs, 
+            train_set = (batched_tensor, performance_tensor)
+        else:
+            train_set = DataLoader(pc.SlidingWindow(factor_returns, asset_returns, n_obs, 
                                                 perf_period))
 
         if opt_type == Optimizers.LinearEWAndRPOptimizer:
             pass
 
         # net_train to get optimal delta
-        net.net_train(train_set, lr=lr, epochs=epochs_per_date, date=date)
+        net.net_train(train_set, lr=lr, epochs=epochs_per_date, date=date, batching=batching)
 
         factor_ret_tensor = Variable(torch.tensor(factor_returns.values, dtype=torch.double))
         asset_ret_tensor = Variable(torch.tensor(asset_returns.values, dtype=torch.double))
 
         # perform forward pass to get optimal portfolio
-        x_tensor, _ = net(factor_ret_tensor, asset_ret_tensor)
+        x_tensor, _ = net(performance_tensor, asset_ret_tensor, batching=False)
         x = x_tensor.detach().numpy().flatten()
         if opt_type == Optimizers.DRRPWDeltaTrained:
             delta_val = net.delta.item()
             delta_trained.append(delta_val)
-            loss_values.append(net.curr_loss)
-            grad_values.append(net.curr_gradient)
+            loss_values.append(net.loss_val)
+            print(loss_values)
+            # grad_values.append(net.curr_gradient)
         elif opt_type in [Optimizers.DRRPWTTrained, Optimizers.DRRPWTTrained_Diagonal]:
             T_val = net.T.detach().numpy()
             print(np.diag(T_val))
@@ -139,7 +130,6 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
         print("x: {}. CurrentPortfolioValue: {}. currentPrices: {}".format(x, CurrentPortfolioValue, currentPrices))
         noShares = np.divide(x*CurrentPortfolioValue, currentPrices)
         print('Done {}'.format(date))
-        # break
     
     portVal['date'] = pd.to_datetime(portVal['date'])
     portVal = portVal.merge(factors[['date','RF']], how='left', on='date')

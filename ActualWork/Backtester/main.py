@@ -14,13 +14,13 @@ datatype = 'cross_asset'
 
 opt_try = [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWDeltaTrained]
 # opt_try = [Optimizers.DRRPWDeltaTrained]
-opt_try = [Optimizers.DRRPWDeltaTrained]
+opt_try = [Optimizers.EW, Optimizers.DRRPWDeltaTrained]
 
 
 for opt_type in opt_try:
     print(opt_type.value)
     if opt_type in [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWTTrained, Optimizers.LearnMVOAndRP, Optimizers.MVONormTrained, Optimizers.DRRPWTTrained_Diagonal]:
-        holdings, portVal, hyperparams = RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype=datatype)
+        holdings, portVal, hyperparams = RunBacktest_e2e(path_to_data, opt_type, InitialValue, lookback, datatype=datatype)
         if Optimizers.DRRPWDeltaTrained:
             with open(path_to_results + '{}_deltavals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
                 pickle.dump(hyperparams[0], f)
@@ -28,17 +28,19 @@ for opt_type in opt_try:
                 pickle.dump(hyperparams[1], f)
             with open(path_to_results + '{}_gradvals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
                 pickle.dump(hyperparams[2], f)
+        portVal.to_pickle(path_to_results + '{}_{}_value.pkl'.format(opt_type.value, datatype, lookback))
+        holdings.to_pickle(path_to_results + '{}_{}_holdings.pkl'.format(opt_type.value, datatype, lookback))
     else:
         if opt_type==Optimizers.DRRPW:
             for d in [100]:
-                holdings, portVal = RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype=datatype, delta_rob=d)
+                holdings, portVal = RunBacktest(path_to_data, opt_type, InitialValue, lookback, datatype=datatype, delta_rob=d)
                 name = "{}_delta{}".format(opt_type.value, d)
                 print(name)
 
                 portVal.to_pickle(path_to_results + '{}_{}_value.pkl'.format(name, datatype, lookback))
                 holdings.to_pickle(path_to_results + '{}_{}_holdings.pkl'.format(name, datatype, lookback))
         else:
-            holdings, portVal = RunBacktest(path_to_data, opt_type, InitialValue=1000000, lookback = 30, datatype=datatype)
+            holdings, portVal = RunBacktest(path_to_data, opt_type, InitialValue, lookback, datatype=datatype)
             portVal.to_pickle(path_to_results + '{}_{}_value.pkl'.format(opt_type.value, datatype, lookback))
             holdings.to_pickle(path_to_results + '{}_{}_holdings.pkl'.format(opt_type.value, datatype, lookback))
     
