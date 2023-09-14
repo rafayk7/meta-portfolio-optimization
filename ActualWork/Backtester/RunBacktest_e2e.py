@@ -12,7 +12,7 @@ import LossFunctions as lf
 from torch.autograd import Variable
 import torch
 from mvo_learn_norm import mvo_norm_net
-
+from LinearEWAndRP import LinearEWAndRPNet
 from torch.utils.data import DataLoader
 
 batch_utils = BatchUtils()
@@ -32,7 +32,7 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
 
     # Hyperparameters
     lr = 0.01
-    epochs_per_date = 50
+    epochs_per_date = 25
 
     if opt_type==Optimizers.CardinalityRP:
         cardinality=10
@@ -41,21 +41,29 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
     set_seed = 200
 
     if opt_type==Optimizers.MVONormTrained:
-        net = mvo_norm_net(n_x, n_y, n_obs, train_pred=True, 
+        batching = False
+        net = mvo_norm_net(n_x, n_y, n_obs, 
                 learnT=((opt_type==Optimizers.DRRPWTTrained) or (opt_type==Optimizers.MVONormTrained)), learnDelta=(opt_type==Optimizers.DRRPWDeltaTrained), 
-                set_seed=set_seed, opt_layer='nominal', T_Diagonal=(opt_type==Optimizers.DRRPWTTrained_Diagonal)).double()
+                set_seed=set_seed, opt_layer='nominal').double()
+    elif opt_type==Optimizers.LinearEWAndRPOptimizer:
+        batching = False
+        net = LinearEWAndRPNet(n_x, n_y, n_obs)
     else:
-        net = drrpw_net(n_x, n_y, n_obs, train_pred=True,
+        batching = True
+        net = drrpw_net(n_x, n_y, n_obs,
                 learnT=(
                         (opt_type==Optimizers.DRRPWTTrained)
                         or (opt_type==Optimizers.MVONormTrained)
                         or (opt_type==Optimizers.DRRPWTTrained_Diagonal)),
-                learnDelta=(opt_type==Optimizers.DRRPWDeltaTrained),
-                set_seed=set_seed, opt_layer='nominal', T_Diagonal=(opt_type==Optimizers.DRRPWTTrained_Diagonal), cache_path=path_to_data).double()
+                learnDelta=(opt_type in [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWDeltaTrainedCustom]),
+                set_seed=set_seed, T_Diagonal=(opt_type==Optimizers.DRRPWTTrained_Diagonal), use_custom_fwd=(opt_type==Optimizers.DRRPWDeltaTrainedCustom)).double()
 
     delta_trained = []
     loss_values = []
     grad_values = []
+    time_values = []
+    fwdtime_values = []
+    bwdtime_values = []
     T_diagonals = []
     T_offdiagonals = []
 
@@ -85,20 +93,15 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
         factor_returns = factors[(factors['date'] < date)].tail(lookback)
         factor_returns = factor_returns.drop('date', axis=1)
 
-        batching = True
+        performance_tensor = None
         if batching:
             window_size = 52
             batched_tensor = batch_utils.convert_to_sw_batched(asset_returns, window_size)
             performance_tensor = batch_utils.convert_performance_periods(asset_returns, window_size)
-
-
             train_set = (batched_tensor, performance_tensor)
         else:
             train_set = DataLoader(pc.SlidingWindow(factor_returns, asset_returns, n_obs, 
                                                 perf_period))
-
-        if opt_type == Optimizers.LinearEWAndRPOptimizer:
-            pass
 
         # net_train to get optimal delta
         net.net_train(train_set, lr=lr, epochs=epochs_per_date, date=date, batching=batching)
@@ -109,15 +112,18 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
         # perform forward pass to get optimal portfolio
         x_tensor, _ = net(performance_tensor, asset_ret_tensor, batching=False)
         x = x_tensor.detach().numpy().flatten()
-        if opt_type == Optimizers.DRRPWDeltaTrained:
+        if opt_type in [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWDeltaTrainedCustom]:
             delta_val = net.delta.item()
             delta_trained.append(delta_val)
             loss_values.append(net.loss_val)
-            print(loss_values)
+            time_values.append(net.avg_time)
+            fwdtime_values.append(net.avg_fwd_time)
+            bwdtime_values.append(net.avg_bwd_time)
             # grad_values.append(net.curr_gradient)
         elif opt_type in [Optimizers.DRRPWTTrained, Optimizers.DRRPWTTrained_Diagonal]:
-            T_val = net.T.detach().numpy()
-            print(np.diag(T_val))
+            T = net.T.detach().numpy()
+            delta_trained.append(np.mean(np.diag(T)))
+            loss_values.append(np.mean(T - np.diag(np.diag(T))))
 
         # mu, Q = GetParameterEstimates(asset_returns, factor_returns, log=False, bad=True)
         # x = GetOptimalAllocation(mu, Q, opt_type)
@@ -130,9 +136,9 @@ def RunBacktest_e2e(path_to_data, opt_type, InitialValue=1000000, lookback = 30,
         print("x: {}. CurrentPortfolioValue: {}. currentPrices: {}".format(x, CurrentPortfolioValue, currentPrices))
         noShares = np.divide(x*CurrentPortfolioValue, currentPrices)
         print('Done {}'.format(date))
-    
+                
     portVal['date'] = pd.to_datetime(portVal['date'])
     portVal = portVal.merge(factors[['date','RF']], how='left', on='date')
 
 
-    return holdings, portVal, [delta_trained, loss_values, grad_values]
+    return holdings, portVal, [delta_trained, loss_values, grad_values, time_values, fwdtime_values, bwdtime_values]

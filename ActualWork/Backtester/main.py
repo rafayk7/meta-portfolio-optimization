@@ -10,24 +10,36 @@ path_to_results = r"C:\Users\Rafay\Documents\thesis3\thesis\ActualWork\Results"
 InitialValue = 1000000 # $1,000,000
 lookback = 52 # Number of days preceeding current date to train
 
-datatype = 'cross_asset'
+datatype = 'cross_asset_fixed'
 
 opt_try = [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWDeltaTrained]
 # opt_try = [Optimizers.DRRPWDeltaTrained]
-opt_try = [Optimizers.EW, Optimizers.DRRPWDeltaTrained]
-
+opt_try = [Optimizers.DRRPWTTrained_Diagonal, Optimizers.DRRPWTTrained]
 
 for opt_type in opt_try:
     print(opt_type.value)
-    if opt_type in [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWTTrained, Optimizers.LearnMVOAndRP, Optimizers.MVONormTrained, Optimizers.DRRPWTTrained_Diagonal]:
+    if opt_type in [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWDeltaTrainedCustom, Optimizers.DRRPWTTrained, Optimizers.LearnMVOAndRP, Optimizers.MVONormTrained, Optimizers.DRRPWTTrained_Diagonal, Optimizers.LinearEWAndRPOptimizer]:
         holdings, portVal, hyperparams = RunBacktest_e2e(path_to_data, opt_type, InitialValue, lookback, datatype=datatype)
-        if Optimizers.DRRPWDeltaTrained:
+        if opt_type in [Optimizers.DRRPWDeltaTrained, Optimizers.DRRPWDeltaTrainedCustom]:
             with open(path_to_results + '{}_deltavals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
                 pickle.dump(hyperparams[0], f)
             with open(path_to_results + '{}_lossvals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
                 pickle.dump(hyperparams[1], f)
             with open(path_to_results + '{}_gradvals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
                 pickle.dump(hyperparams[2], f)
+            with open(path_to_results + '{}_timevals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
+                pickle.dump(hyperparams[3], f)
+            with open(path_to_results + '{}_fwdtimevals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
+                pickle.dump(hyperparams[4], f)
+            with open(path_to_results + '{}_bwdtimevals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
+                pickle.dump(hyperparams[5], f)
+        if opt_type in [Optimizers.DRRPWTTrained, Optimizers.DRRPWTTrained_Diagonal]:
+            with open(path_to_results + '{}_diagonalvals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
+                pickle.dump(hyperparams[0], f)
+            with open(path_to_results + '{}_offdiagonalvals_{}.pkl'.format(opt_type.value, datatype), 'wb') as f:
+                print(hyperparams[1])
+                pickle.dump(hyperparams[1], f)
+
         portVal.to_pickle(path_to_results + '{}_{}_value.pkl'.format(opt_type.value, datatype, lookback))
         holdings.to_pickle(path_to_results + '{}_{}_holdings.pkl'.format(opt_type.value, datatype, lookback))
     else:

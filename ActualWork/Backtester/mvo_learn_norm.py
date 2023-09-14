@@ -46,6 +46,8 @@ def mvo_norm_learn(n_y, n_obs, Q, mu):
         Q = nearestPD(Q)
         L = np.linalg.cholesky(Q)
 
+    L /= np.linalg.norm(L)
+    
     # Constraints
     # Target Return for Constraint
     targetRet = np.mean(mu)
@@ -56,7 +58,7 @@ def mvo_norm_learn(n_y, n_obs, Q, mu):
         phi>=0 # Disallow Short Sales
     ]
 
-    obj = cp.norm(T@phi, 2)
+    obj = cp.norm(L@phi, 2) + cp.norm(T@phi, 2)
 
     # Objective function
     objective = cp.Minimize(obj)    
@@ -157,14 +159,10 @@ class mvo_norm_net(nn.Module):
         # Store reference path to store model data
         self.cache_path = cache_path
 
-        # Store initial model
-        self.init_state_path = cache_path + self.model_type+'_initial_state_' + pred_model
-        torch.save(self.state_dict(), self.init_state_path)
-
     #-----------------------------------------------------------------------------------------------
     # forward: forward pass of the e2e neural net
     #-----------------------------------------------------------------------------------------------
-    def forward(self, X, Y):
+    def forward(self, X, Y, batching=False):
         """
         Forward pass of the NN module
 
@@ -228,7 +226,7 @@ class mvo_norm_net(nn.Module):
     #-----------------------------------------------------------------------------------------------
     # net_train: Train the e2e neural net
     #-----------------------------------------------------------------------------------------------
-    def net_train(self, train_set, val_set=None, epochs=None, lr=None):
+    def net_train(self, train_set, val_set=None, epochs=None, lr=None, date=None, batching=False):
         """Neural net training module
         
         Inputs
